@@ -1,7 +1,7 @@
 import { normalizeUrlToThreadId } from "./chat-store.js";
 
-export function buildOpenInZoUrl({ pageUrl, pageTitle }) {
-  const base = "https://YOUR-HANDLE.zo.computer/";
+export function buildOpenInZoUrl({ pageUrl, pageTitle, handle }) {
+  const base = handle ? `https://${handle}.zo.computer/` : "https://app.zo.computer/";
   const u = new URL(base);
   u.searchParams.set("source", "chrome-extension");
   if (pageUrl) {

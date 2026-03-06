@@ -14,7 +14,8 @@ if (typeof marked !== "undefined") {
 
 let state = {
   apiKey: "",
-  defaultModel: "openrouter:z-ai/glm-5",
+  handle: "",
+  defaultModel: "z-ai/glm-5",
   selectedModel: "",
   context: null,
   messages: [],
@@ -322,6 +323,7 @@ function switchFilesPane(name) {
 async function init() {
   const settings = await getSettings();
   state.apiKey = settings.apiKey;
+  state.handle = settings.handle;
   state.defaultModel = settings.model;
 
   await loadContextAndThread();
@@ -358,7 +360,7 @@ async function init() {
 
   el.saveBtn.addEventListener("click", savePageToZo);
   el.openInZoBtn.addEventListener("click", () => {
-    const url = buildOpenInZoUrl({ pageUrl: state.context?.url, pageTitle: state.context?.title });
+    const url = buildOpenInZoUrl({ pageUrl: state.context?.url, pageTitle: state.context?.title, handle: state.handle });
     chrome.tabs.create({ url });
   });
 

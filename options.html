@@ -232,11 +232,17 @@
       <p class="subtitle">Configure your API key to get started</p>
 
       <div class="form-group">
+        <label for="zo-handle">Zo Handle</label>
+        <input type="text" id="zo-handle" placeholder="e.g. curtastrophe" autocomplete="off">
+        <p class="help-text">Used for the "Open in Zo" deep links.</p>
+      </div>
+
+      <div class="form-group">
         <label for="api-key">Zo API Key</label>
         <input type="password" id="api-key" placeholder="zo_live_..." autocomplete="off">
         <p class="help-text">
           Get your API key from
-          <a href="https://YOUR-HANDLE.zo.computer/?t=settings&s=advanced" target="_blank">Settings, Advanced, Access Tokens</a>
+          <a id="settings-link" href="https://app.zo.computer/?t=settings&s=advanced" target="_blank">Settings, Advanced, Access Tokens</a>
         </p>
       </div>
 
