@@ -137,3 +137,54 @@ textarea, input { width: 100%; border: 1px solid var(--border); background: var(
   0% { width: 100%; }
   100% { width: 0%; }
 }
+
+/* Tree View for Zo Files */
+.tree-view {
+  font-size: 12px;
+}
+.tree-folder {
+  cursor: pointer;
+  padding: 4px 6px;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--text);
+}
+.tree-folder:hover {
+  background: rgba(255,255,255,0.05);
+}
+.tree-folder .arrow {
+  color: var(--subtle);
+  font-size: 10px;
+  transition: transform 0.15s;
+}
+.tree-folder.collapsed .arrow {
+  transform: rotate(-90deg);
+}
+.tree-folder .folder-name {
+  font-weight: 500;
+}
+.tree-children {
+  padding-left: 16px;
+}
+.tree-children.collapsed {
+  display: none;
+}
+.tree-file {
+  padding: 4px 6px;
+  padding-left: 20px;
+  border-radius: 6px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--muted);
+}
+.tree-file:hover {
+  background: rgba(99, 102, 241, 0.15);
+  color: var(--text);
+}
+.tree-file .file-icon {
+  font-size: 11px;
+}
