@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Zo Side Panel</title>
+  <link rel="stylesheet" href="styles/sidepanel.css" />
+  <script src="vendor/marked.min.js"></script>
+  <script src="vendor/highlight.min.js"></script>
+</head>
+<body>
+  <div class="app">
+    <header class="topbar">
+      <div class="brand">
+        <img src="icons/zo-logo.png" alt="Zo" class="logo" />
+        <h1>Zo</h1>
+      </div>
+      <div class="actions">
+        <button id="save-btn" class="btn">Save</button>
+        <button id="open-in-zo-btn" class="btn btn-primary">Open in Zo</button>
+      </div>
+    </header>
+
+    <nav class="tabs">
+      <button class="tab active" data-pane="chat">Chat</button>
+      <button class="tab" data-pane="history">History</button>
+      <button class="tab" data-pane="files">Files</button>
+    </nav>
+
+    <section id="pane-chat" class="pane active">
+      <div class="context">
+        <div id="page-title" class="title">Loading...</div>
+        <div id="page-url" class="url"></div>
+      </div>
+      <div id="chat-messages" class="chat-messages"></div>
+      <div class="composer">
+        <textarea id="chat-input" rows="2" placeholder="Ask about this page..."></textarea>
+        <div class="composer-actions">
+          <button id="clear-chat-btn" class="btn">Clear</button>
+          <button id="send-btn" class="btn btn-primary">Send</button>
+        </div>
+        <div class="model-row">
+          <label for="chat-model-select">Model</label>
+          <select id="chat-model-select"></select>
+        </div>
+        <div id="chat-model-status" class="model-status hidden"></div>
+      </div>
+    </section>
+
+    <section id="pane-history" class="pane">
+      <div id="history-list" class="list"></div>
+    </section>
+
+    <section id="pane-files" class="pane">
+      <div class="subtabs">
+        <button class="subtab active" data-files-pane="local">Local Artifacts</button>
+        <button class="subtab" data-files-pane="zo">Zo Workspace Files</button>
+      </div>
+      <div class="search-wrap">
+        <input id="files-query" placeholder="Filter files" />
+        <button id="files-refresh" class="btn">Refresh</button>
+      </div>
+      <div id="files-list" class="list"></div>
+    </section>
+
+    <div id="status" class="status hidden"></div>
+  </div>
+
+  <script src="scripts/sidepanel.js" type="module"></script>
+</body>
+</html>

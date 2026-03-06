@@ -1,0 +1,275 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Zo Extension Settings</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    :root {
+      color-scheme: dark;
+      --zo-bg: #09090b;
+      --zo-surface: #18181b;
+      --zo-surface-elevated: #1f1f23;
+      --zo-border: #27272a;
+      --zo-border-strong: #3f3f46;
+      --zo-text: #fafafa;
+      --zo-text-muted: #a1a1aa;
+      --zo-text-subtle: #71717a;
+      --zo-accent: #f4f4f5;
+      --zo-accent-text: #111113;
+      --zo-success: #22c55e;
+      --zo-error: #ef4444;
+    }
+
+    body {
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
+      background: var(--zo-bg);
+      color: var(--zo-text);
+      min-height: 100vh;
+      padding: 28px 20px;
+    }
+
+    .container {
+      max-width: 560px;
+      margin: 0 auto;
+    }
+
+    .card {
+      border: 1px solid var(--zo-border);
+      background: var(--zo-surface);
+      border-radius: 16px;
+      padding: 18px;
+    }
+
+    .title-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 6px;
+    }
+
+    .logo {
+      width: 28px;
+      height: 28px;
+      border-radius: 7px;
+      display: block;
+    }
+
+    h1 {
+      font-size: 18px;
+      font-weight: 600;
+      letter-spacing: 0.01em;
+    }
+
+    .subtitle {
+      color: var(--zo-text-muted);
+      margin-bottom: 18px;
+      font-size: 13px;
+    }
+
+    .form-group {
+      margin-bottom: 16px;
+    }
+
+    label {
+      display: block;
+      font-weight: 500;
+      margin-bottom: 7px;
+      font-size: 13px;
+      color: var(--zo-text-muted);
+    }
+
+    input,
+    select {
+      width: 100%;
+      padding: 10px 12px;
+      border: 1px solid var(--zo-border);
+      border-radius: 10px;
+      background: #111113;
+      color: var(--zo-text);
+      font-size: 13px;
+      outline: none;
+      transition: border-color 0.15s ease, background 0.15s ease;
+    }
+
+    input {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, Liberation Mono, monospace;
+    }
+
+    input:focus,
+    select:focus {
+      border-color: var(--zo-border-strong);
+      background: #151518;
+    }
+
+    input::placeholder {
+      color: var(--zo-text-subtle);
+    }
+
+    .help-text {
+      margin-top: 7px;
+      font-size: 12px;
+      color: var(--zo-text-subtle);
+      line-height: 1.45;
+    }
+
+    .help-text a {
+      color: #d4d4d8;
+      text-decoration: none;
+    }
+
+    .help-text a:hover {
+      text-decoration: underline;
+    }
+
+    .actions {
+      display: flex;
+      gap: 8px;
+      margin-top: 4px;
+    }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      padding: 10px 14px;
+      border-radius: 10px;
+      border: 1px solid var(--zo-border);
+      background: var(--zo-surface-elevated);
+      color: var(--zo-text);
+      font-size: 12px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: background 0.15s ease, border-color 0.15s ease, transform 0.1s ease;
+    }
+
+    .btn:hover {
+      background: #27272a;
+      border-color: var(--zo-border-strong);
+    }
+
+    .btn:active {
+      transform: translateY(1px);
+    }
+
+    .btn-primary {
+      background: var(--zo-accent);
+      color: var(--zo-accent-text);
+      border-color: transparent;
+    }
+
+    .btn-primary:hover {
+      background: #ffffff;
+    }
+
+    .status {
+      margin-top: 12px;
+      padding: 10px 12px;
+      border-radius: 10px;
+      font-size: 12px;
+      border: 1px solid transparent;
+    }
+
+    .status.success {
+      background: color-mix(in srgb, var(--zo-success) 12%, #111113 88%);
+      color: #86efac;
+      border-color: color-mix(in srgb, var(--zo-success) 28%, transparent);
+    }
+
+    .status.error {
+      background: color-mix(in srgb, var(--zo-error) 10%, #111113 90%);
+      color: #fca5a5;
+      border-color: color-mix(in srgb, var(--zo-error) 26%, transparent);
+    }
+
+    .hidden {
+      display: none;
+    }
+
+    .divider {
+      height: 1px;
+      background: var(--zo-border);
+      margin: 18px 0;
+    }
+
+    .section-title {
+      font-size: 13px;
+      font-weight: 600;
+      margin-bottom: 10px;
+      color: var(--zo-text-muted);
+    }
+
+    .feature-list {
+      list-style: none;
+      display: grid;
+      gap: 7px;
+    }
+
+    .feature-list li {
+      padding: 8px 10px;
+      font-size: 12px;
+      color: #d4d4d8;
+      border: 1px solid var(--zo-border);
+      border-radius: 10px;
+      background: #111113;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="card">
+      <div class="title-row">
+        <img class="logo" src="icons/zo-logo.png" alt="Zo" />
+        <h1>Zo Browser Assistant</h1>
+      </div>
+      <p class="subtitle">Configure your API key to get started</p>
+
+      <div class="form-group">
+        <label for="api-key">Zo API Key</label>
+        <input type="password" id="api-key" placeholder="zo_live_..." autocomplete="off">
+        <p class="help-text">
+          Get your API key from
+          <a href="https://YOUR-HANDLE.zo.computer/?t=settings&s=advanced" target="_blank">Settings, Advanced, Access Tokens</a>
+        </p>
+      </div>
+
+      <div class="form-group">
+        <label for="model-select">Default Model</label>
+        <select id="model-select"></select>
+        <p class="help-text">Loads all available models for this API key (native + BYOK). This default is used when popup/sidepanel opens.</p>
+        <div class="actions" style="margin-top:8px;">
+          <button id="reload-models-btn" class="btn">Reload Models</button>
+        </div>
+        <p id="model-summary" class="help-text"></p>
+      </div>
+
+      <div class="actions">
+        <button id="save-btn" class="btn btn-primary">Save Settings</button>
+        <button id="test-btn" class="btn">Test Connection</button>
+      </div>
+
+      <div id="status" class="status hidden"></div>
+
+      <div class="divider"></div>
+
+      <h2 class="section-title">Features</h2>
+      <ul class="feature-list">
+        <li>Save any webpage to your Zo workspace</li>
+        <li>Chat with Zo about the current page</li>
+        <li>Summarize articles and documents</li>
+        <li>Extract key information from pages</li>
+        <li>Ask questions about page content</li>
+      </ul>
+    </div>
+  </div>
+
+  <script src="scripts/options.js"></script>
+</body>
+</html>

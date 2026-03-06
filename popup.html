@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Zo Browser Assistant</title>
+  <link rel="stylesheet" href="popup.css">
+  <script src="vendor/marked.min.js"></script>
+  <script src="vendor/highlight.min.js"></script>
+</head>
+<body>
+  <div class="container">
+    <header class="header">
+      <img src="icons/zo-logo.png" alt="Zo" class="logo">
+      <h1>Zo Assistant</h1>
+      <button id="open-sidebar-btn" class="btn-link">Open Sidebar</button>
+    </header>
+
+    <div id="not-configured" class="hidden">
+      <div class="warning-box">
+        <p>API key not configured</p>
+        <button id="open-options" class="btn btn-primary">Configure API Key</button>
+      </div>
+    </div>
+
+    <div id="main-content">
+      <div class="page-info">
+        <div class="page-title" id="page-title">Loading...</div>
+        <div class="page-url" id="page-url"></div>
+      </div>
+
+      <div class="actions">
+        <button id="save-btn" class="btn btn-primary btn-full">
+          <span class="btn-icon">💾</span>
+          Save to Zo
+        </button>
+      </div>
+
+      <div id="status" class="status hidden"></div>
+
+      <div class="chat-section">
+        <div class="chat-header">
+          <h2>Ask Zo About This Page</h2>
+          <button id="clear-chat-btn" class="btn-link" title="Clear chat history">Clear</button>
+        </div>
+        <div id="chat-messages" class="chat-messages"></div>
+        <div class="chat-input-container">
+          <textarea id="chat-input" placeholder="Ask a question about this page..." rows="2"></textarea>
+          <button id="send-btn" class="btn btn-primary"><span>Send</span></button>
+        </div>
+        <div class="model-row">
+          <label for="chat-model-select">Model</label>
+          <select id="chat-model-select"></select>
+        </div>
+        <div id="chat-model-status" class="model-status hidden"></div>
+      </div>
+    </div>
+
+    <footer class="footer">
+      <button id="settings-btn" class="btn-link">Settings</button>
+      <button id="open-in-zo-btn" class="btn-link">Open in Zo</button>
+    </footer>
+  </div>
+
+  <script src="scripts/popup.js" type="module"></script>
+</body>
+</html>

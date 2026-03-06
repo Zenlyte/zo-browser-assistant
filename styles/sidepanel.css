@@ -1,0 +1,139 @@
+:root {
+  color-scheme: dark;
+  --bg: #09090b;
+  --surface: #18181b;
+  --surface2: #111113;
+  --border: #27272a;
+  --text: #fafafa;
+  --muted: #a1a1aa;
+  --subtle: #71717a;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  overflow-x: hidden;
+}
+.app {
+  padding: 10px;
+  height: 100vh;
+  display: grid;
+  grid-template-rows: auto auto 1fr auto;
+  gap: 8px;
+  overflow-x: hidden;
+}
+.topbar { display: flex; justify-content: space-between; align-items: center; border: 1px solid var(--border); background: var(--surface); padding: 8px 10px; border-radius: 12px; }
+.brand { display: flex; align-items: center; gap: 8px; }
+.logo { width: 20px; height: 20px; border-radius: 5px; }
+.brand h1 { font-size: 13px; margin: 0; }
+.actions { display: flex; gap: 6px; }
+.btn { border: 1px solid var(--border); background: var(--surface2); color: var(--text); padding: 6px 10px; border-radius: 9px; font-size: 12px; cursor: pointer; }
+.btn-primary { background: #f4f4f5; color: #111113; border-color: transparent; }
+.tabs, .subtabs { display: flex; gap: 6px; }
+.tab, .subtab { flex: 1; border: 1px solid var(--border); background: var(--surface); color: var(--muted); padding: 7px 8px; border-radius: 9px; font-size: 12px; cursor: pointer; }
+.tab.active, .subtab.active { color: var(--text); background: #222226; }
+.pane { display: none; min-height: 0; border: 1px solid var(--border); background: var(--surface); border-radius: 12px; padding: 8px; }
+.pane.active { display: grid; grid-template-rows: auto 1fr auto; gap: 8px; }
+#pane-history.active, #pane-files.active { display: grid; grid-template-rows: auto auto 1fr; }
+.context {
+  border: 1px solid var(--border);
+  background: var(--surface2);
+  padding: 8px;
+  border-radius: 10px;
+  min-width: 0;
+}
+.title {
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+.url {
+  color: var(--subtle);
+  font-size: 11px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+  max-width: 100%;
+}
+.chat-messages, .list {
+  overflow: auto;
+  min-height: 0;
+  border: 1px solid var(--border);
+  background: var(--surface2);
+  border-radius: 10px;
+  padding: 8px;
+  overflow-x: hidden;
+}
+.message { border: 1px solid var(--border); border-radius: 10px; padding: 8px; margin-bottom: 8px; font-size: 12px; line-height: 1.45; }
+.message.user { background: #151518; margin-left: 14px; }
+.message.assistant { background: #0f0f12; margin-right: 14px; }
+.composer { display: grid; gap: 6px; }
+textarea, input { width: 100%; border: 1px solid var(--border); background: var(--surface2); color: var(--text); border-radius: 10px; padding: 8px; font-size: 12px; outline: none; }
+.composer-actions { display: flex; justify-content: flex-end; gap: 6px; }
+.row {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 8px;
+  margin-bottom: 6px;
+  background: #111113;
+  cursor: pointer;
+  min-width: 0;
+}
+.row .meta {
+  color: var(--subtle);
+  font-size: 11px;
+  margin-top: 4px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.search-wrap { display: grid; grid-template-columns: 1fr auto; gap: 6px; }
+.status { border: 1px solid var(--border); background: #111113; color: var(--muted); padding: 8px; border-radius: 10px; font-size: 12px; }
+.model-row {
+  display: grid;
+  grid-template-columns: 42px 1fr;
+  align-items: center;
+  gap: 8px;
+}
+.model-row label { font-size: 11px; color: var(--muted); }
+.model-row select {
+  width: 100%;
+  border: 1px solid var(--border);
+  background: var(--surface2);
+  color: var(--text);
+  border-radius: 10px;
+  padding: 7px 8px;
+  font-size: 11px;
+  outline: none;
+}
+.model-row select:disabled { opacity: 0.6; }
+.model-status { font-size: 11px; color: var(--subtle); }
+.hidden { display: none; }
+.btn-saving {
+  position: relative;
+  overflow: hidden;
+}
+.btn-saving > * {
+  position: relative;
+  z-index: 1;
+}
+.btn-saving::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.2);
+  animation: save-progress 10s linear forwards;
+  z-index: 0;
+}
+@keyframes save-progress {
+  0% { width: 100%; }
+  100% { width: 0%; }
+}
