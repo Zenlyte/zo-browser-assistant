@@ -1,6 +1,6 @@
 import { getSettings } from "./core/settings-store.js";
 import { getActiveTabContext } from "./core/page-context.js";
-import { askZo, listAvailableModels } from "./core/zo-client.js";
+import { askZo, askZoStream, listAvailableModels } from "./core/zo-client.js";
 import { groupModels, chooseInitialModel } from "./core/model-catalog.js";
 import { getThread, saveThread, clearThread, normalizeUrlToThreadId } from "./core/chat-store.js";
 import { savePageArtifact, formatArtifactPath } from "./core/saved-pages.js";
@@ -12,13 +12,14 @@ if (typeof marked !== "undefined") {
 
 let state = {
   apiKey: "",
-  handle: "",
-  defaultModel: "z-ai/glm-5",
+  defaultModel: "openrouter:z-ai/glm-5",
   selectedModel: "",
   context: null,
   messages: [],
   modelsReady: false,
 };
+
+const savesInFlight = new Set();
 
 const el = {
   notConfigured: document.getElementById("not-configured"),
@@ -84,6 +85,40 @@ function renderMessages() {
   el.chatMessages.scrollTop = el.chatMessages.scrollHeight;
 }
 
+function appendStreamingBubble() {
+  const d = document.createElement("div");
+  d.className = "message assistant streaming";
+  d.innerHTML = `<span class="streaming-cursor"></span>`;
+  el.chatMessages.appendChild(d);
+  el.chatMessages.scrollTop = el.chatMessages.scrollHeight;
+  return d;
+}
+
+function updateStreamingBubble(bubble, content) {
+  if (typeof marked !== "undefined") {
+    bubble.innerHTML = marked.parse(content) + `<span class="streaming-cursor"></span>`;
+    bubble.querySelectorAll("pre code").forEach((b) => {
+      if (typeof hljs !== "undefined") hljs.highlightElement(b);
+    });
+  } else {
+    bubble.textContent = content;
+  }
+  el.chatMessages.scrollTop = el.chatMessages.scrollHeight;
+}
+
+function finalizeStreamingBubble(bubble, content) {
+  bubble.classList.remove("streaming");
+  if (typeof marked !== "undefined") {
+    bubble.innerHTML = marked.parse(content);
+    bubble.querySelectorAll("pre code").forEach((b) => {
+      if (typeof hljs !== "undefined") hljs.highlightElement(b);
+    });
+  } else {
+    bubble.textContent = content;
+  }
+  el.chatMessages.scrollTop = el.chatMessages.scrollHeight;
+}
+
 function populateModelSelect(models) {
   const groups = groupModels(models);
   el.chatModelSelect.innerHTML = "";
@@ -141,7 +176,6 @@ async function persist() {
 async function init() {
   const s = await getSettings();
   state.apiKey = s.apiKey;
-  state.handle = s.handle;
   state.defaultModel = s.model;
 
   if (!state.apiKey) {
@@ -176,7 +210,7 @@ function bindEvents() {
     }
   });
   el.openInZoBtn.addEventListener("click", () => {
-    const url = buildOpenInZoUrl({ pageUrl: state.context?.url, pageTitle: state.context?.title, handle: state.handle });
+    const url = buildOpenInZoUrl({ pageUrl: state.context?.url, pageTitle: state.context?.title });
     chrome.tabs.create({ url });
   });
 
@@ -206,6 +240,22 @@ function bindEvents() {
       state.messages = thread?.messages || [];
       renderMessages();
     }
+    
+    if (msg?.type === "SAVE_COMPLETED" && state.context?.url === msg.url) {
+      savesInFlight.delete(msg.url);
+      el.saveBtn.classList.remove("btn-saving");
+      if (msg.alreadySaved) {
+        el.saveBtn.innerHTML = '<span class="btn-icon">✓</span> Already in Zo';
+      }
+    }
+
+    if (msg?.type === "SAVE_FAILED" && state.context?.url === msg.url) {
+      savesInFlight.delete(msg.url);
+      el.saveBtn.classList.remove("btn-saving");
+      el.saveBtn.innerHTML = '<span class="btn-icon">⚠️</span> Save failed';
+      el.saveBtn.disabled = false;
+      showStatus("Zo sync failed: " + msg.error, "error");
+    }
   });
 }
 
@@ -213,48 +263,33 @@ async function savePage() {
   if (!state.modelsReady) return showStatus("Model list unavailable", "error");
   if (!state.apiKey || !state.context || !state.selectedModel) return showStatus("Missing API key, page context, or model", "error");
 
-  const artifactPath = formatArtifactPath(state.context.url);
-  el.saveBtn.disabled = true;
-  const oldText = el.saveBtn.textContent;
-  el.saveBtn.textContent = "Saving...";
-  showStatus("Saving locally and to Zo...", "loading");
+  const url = state.context.url;
+  if (savesInFlight.has(url)) return showStatus("Already saving this page...", "loading");
 
-  try {
-    const input = `Save this webpage to memory. First, search the Bookmarks folder to see if a markdown file for this exact URL already exists. If it does, do not create a new one, and just reply 'ALREADY_SAVED'. If it does not exist, create a detailed markdown summary of the page and save it in the Bookmarks folder. When finished, reply 'SAVED'.\nTitle: ${state.context.title}\nURL: ${state.context.url}\n\nContent:\n${(state.context.content || "").slice(0, 15000)}`;
-    const data = await askZo({ apiKey: state.apiKey, model: state.selectedModel, input });
-    
-    if (data && data.output && data.output.includes("ALREADY_SAVED")) {
-      await savePageArtifact({
-        url: state.context.url,
-        title: state.context.title,
-        model: state.selectedModel,
-        zoSaved: true,
-      });
-      el.saveBtn.innerHTML = '<span class="btn-icon">✓</span> Saved to Zo';
-      el.saveBtn.disabled = true;
-      showStatus(`Already saved in Zo Workspace`, "success");
-    } else {
-      await savePageArtifact({
-        url: state.context.url,
-        title: state.context.title,
-        model: state.selectedModel,
-        zoSaved: true,
-      });
-      el.saveBtn.innerHTML = '<span class="btn-icon">✓</span> Saved to Zo';
-      el.saveBtn.disabled = true;
-      showStatus(`Saved. Local artifact: ${artifactPath}`, "success");
+  savesInFlight.add(url);
+  el.saveBtn.disabled = true;
+  el.saveBtn.innerHTML = '<span class="btn-icon">✓</span> Saved to Zo';
+  showStatus("Page saved locally and syncing to Zo. Safe to close.", "success");
+
+  await savePageArtifact({
+    url: state.context.url,
+    title: state.context.title,
+    model: state.selectedModel,
+    zoSaved: false,
+  });
+
+  chrome.runtime.sendMessage({
+    type: "BACKGROUND_SAVE",
+    url: state.context.url,
+    title: state.context.title,
+    content: state.context.content || "",
+    apiKey: state.apiKey,
+    model: state.selectedModel
+  }, (response) => {
+    if (chrome.runtime.lastError) {
+      console.warn("Background script not ready:", chrome.runtime.lastError);
     }
-  } catch (e) {
-    await savePageArtifact({
-      url: state.context.url,
-      title: state.context.title,
-      model: state.selectedModel,
-      zoSaved: false,
-    });
-    showStatus(`Saved locally only (${artifactPath}). Zo save failed: ${String(e.message || e)}`, "error");
-  } finally {
-    el.saveBtn.classList.remove("btn-saving");
-  }
+  });
 }
 
 async function sendChat() {
@@ -268,17 +303,37 @@ async function sendChat() {
   renderMessages();
   await persist();
 
-  showStatus("Thinking...", "loading");
+  const bubble = appendStreamingBubble();
+  setActionAvailability(false);
+
   try {
     const convo = state.messages.slice(-10).map((m) => `${m.role}: ${m.content}`).join("\n\n");
     const input = `Help answer questions about this webpage.\nTitle: ${state.context.title}\nURL: ${state.context.url}\n\nContent:\n${(state.context.content || "").slice(0, 12000)}\n\nConversation:\n${convo}\n\nLatest user question: ${q}\nRespond in markdown.`;
-    const data = await askZo({ apiKey: state.apiKey, model: state.selectedModel, input });
-    state.messages.push({ role: "assistant", content: data.output || "No response" });
-    renderMessages();
+
+    const finalContent = await askZoStream({
+      apiKey: state.apiKey,
+      model: state.selectedModel,
+      input,
+      onChunk(fullText) {
+        updateStreamingBubble(bubble, fullText);
+      },
+      onDone(fullText) {
+        finalizeStreamingBubble(bubble, fullText);
+      },
+      onError(err) {
+        showStatus(String(err.message || err), "error");
+      },
+    });
+
+    const output = finalContent || "No response";
+    finalizeStreamingBubble(bubble, output);
+    state.messages.push({ role: "assistant", content: output });
     await persist();
-    showStatus("Done", "success");
   } catch (e) {
+    bubble.remove();
     showStatus(String(e.message || e), "error");
+  } finally {
+    setActionAvailability(true);
   }
 }
 

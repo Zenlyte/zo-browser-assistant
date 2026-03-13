@@ -1,16 +1,14 @@
 export async function getSettings() {
-  const data = await chrome.storage.sync.get(["zoApiKey", "zoModel", "zoHandle"]);
+  const data = await chrome.storage.sync.get(["zoApiKey", "zoModel"]);
   return {
     apiKey: data.zoApiKey || "",
-    model: data.zoModel || "z-ai/glm-5",
-    handle: data.zoHandle || "",
+    model: data.zoModel || "openrouter:z-ai/glm-5",
   };
 }
 
-export async function setSettings({ apiKey, model, handle }) {
+export async function setSettings({ apiKey, model }) {
   await chrome.storage.sync.set({
     zoApiKey: apiKey,
-    zoModel: model || "z-ai/glm-5",
-    zoHandle: handle || "",
+    zoModel: model || "openrouter:z-ai/glm-5",
   });
 }

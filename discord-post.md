@@ -22,45 +22,28 @@ Matched the Zo dark aesthetic (zinc palette, subtle borders, Inter font). Popup 
 
 ## Tech
 
-- Chrome Manifest V3
-- Side Panel API for persistent sidebar
+- Chrome Manifest V3 + Side Panel API
+- Streaming responses with real-time rendering
 - Shared core modules between popup/panel
 - Per-URL chat persistence with thread continuity
 - Markdown rendering with syntax highlighting
+- TokenCut compression (40-60% token savings on stored content)
+- Dynamic model selection from Zo API (native + BYOK)
 
 ## How it works
 
 1. You're reading an article
 2. Click extension → ask "What are the main points?"
-3. Need more context? Hit "Open Sidebar"
+3. Need more context? Open the sidebar
 4. Same conversation continues in full side panel
-5. Browse your history or workspace files while chatting
+5. Browse history or workspace files while chatting
 
-Chat threads are tied to each page URL (normalized, tracking params stripped), so returning to a page loads your previous conversation automatically.
+Chat threads are tied to each page URL (normalized, tracking params stripped), so returning to a page loads your previous conversation.
 
-## What's next?
-
-Could add:
-- Export threads as markdown
-- Search across all conversations
-- Custom prompts/templates
-- More Zo API integrations
-
-Pretty happy with how the shared-thread model turned out. Having the same chat work across popup + sidebar without any weird sync issues was the trickiest part.
-
-**Repo structure:**
-```
-zo-chrome-extension/
-├── manifest.json
-├── popup.html / sidepanel.html
-├── scripts/
-│   ├── popup.js / sidepanel.js
-│   └── core/ (shared modules)
-└── tests/ (unit tests)
-```
+Saving a page is near-instant — content is extracted, compressed with TokenCut, and saved locally. Background sync pushes to Zo, Fabric, Mem.ai, and Raindrop.io.
 
 Would love feedback if anyone tries it out! 🙌
 
 ---
 
-*Using: Zo API, Claude/GLM-5, Chrome Side Panel API*
+*Using: Zo API, Chrome Side Panel API, TokenCut*

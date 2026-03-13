@@ -1,5 +1,5 @@
 import { listThreadMetas } from "./chat-store.js";
-import { listZoWorkspaceFiles } from "./zo-client.js";
+import { listZoWorkspaceFiles, listZoDirectory } from "./zo-client.js";
 import { listSavedPages, formatArtifactPath } from "./saved-pages.js";
 
 export async function getLocalArtifacts({ query = "" }) {
@@ -10,12 +10,14 @@ export async function getLocalArtifacts({ query = "" }) {
   const threadItems = metas.map((m) => ({
     path: m.url || "",
     kind: "thread",
+    url: m.url || "",
     summary: `${m.title || "Untitled"} (${m.messageCount || 0} msgs)`,
   }));
 
   const savedPageItems = savedPages.map((p) => ({
     path: formatArtifactPath(p.url),
     kind: "saved-page",
+    url: p.url || "",
     summary: `${p.title || p.url} • ${p.zoSaved ? "saved to Zo" : "local only"}`,
   }));
 
@@ -26,4 +28,8 @@ export async function getLocalArtifacts({ query = "" }) {
 
 export async function getZoWorkspaceFiles({ apiKey, model, defaultModel, pageUrl, query = "" }) {
   return listZoWorkspaceFiles({ apiKey, model, defaultModel, pageUrl, query });
+}
+
+export async function getZoDirectoryListing({ apiKey, dirPath }) {
+  return listZoDirectory({ apiKey, dirPath });
 }

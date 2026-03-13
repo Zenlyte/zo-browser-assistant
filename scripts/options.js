@@ -1,5 +1,4 @@
 document.addEventListener('DOMContentLoaded', async () => {
-  const handleInput = document.getElementById('zo-handle');
   const apiKeyInput = document.getElementById('api-key');
   const modelSelect = document.getElementById('model-select');
   const saveBtn = document.getElementById('save-btn');
@@ -7,20 +6,8 @@ document.addEventListener('DOMContentLoaded', async () => {
   const reloadModelsBtn = document.getElementById('reload-models-btn');
   const modelSummary = document.getElementById('model-summary');
   const status = document.getElementById('status');
-  const settingsLink = document.getElementById('settings-link');
 
   let loadedModels = [];
-
-  function updateSettingsLink() {
-    const handle = handleInput.value.trim();
-    if (handle) {
-      settingsLink.href = `https://${handle}.zo.computer/?t=settings&s=advanced`;
-    } else {
-      settingsLink.href = `https://app.zo.computer/?t=settings&s=advanced`;
-    }
-  }
-
-  handleInput.addEventListener('input', updateSettingsLink);
 
   function showStatus(message, type) {
     status.textContent = message;
@@ -37,115 +24,136 @@ document.addEventListener('DOMContentLoaded', async () => {
       : '';
   }
 
-  // Load existing settings
-  const result = await chrome.storage.sync.get(['zoApiKey', 'zoModel', 'zoHandle']);
-  if (result.zoHandle) {
-    handleInput.value = result.zoHandle;
-    updateSettingsLink();
-  }
-  if (result.zoApiKey) {
-    apiKeyInput.value = result.zoApiKey;
-  }
-  if (result.zoModel) {
-    modelSelect.value = result.zoModel;
+  function normalizeModels(rawModels = []) {
+    return rawModels
+      .filter((m) => m && m.model_name)
+      .map((m) => ({
+        provider: (m.vendor || 'Unknown').trim(),
+        modelName: m.model_name,
+        label: (m.label || m.model_name).trim(),
+        isByok: Boolean(m.is_byok),
+      }));
   }
 
-  async function refreshModels(key) {
-    if (!key) return;
+  function groupModels(models = []) {
+    const grouped = new Map();
+    models.forEach((m) => {
+      const key = `${m.provider} | ${m.isByok ? 'BYOK' : 'Native'}`;
+      if (!grouped.has(key)) grouped.set(key, []);
+      grouped.get(key).push(m);
+    });
+
+    return [...grouped.entries()]
+      .map(([key, items]) => ({
+        label: key,
+        items: [...items].sort((a, b) => a.label.localeCompare(b.label)),
+      }))
+      .sort((a, b) => a.label.localeCompare(b.label));
+  }
+
+  function renderModelOptions(models, selectedModel) {
+    modelSelect.innerHTML = '';
+    const groups = groupModels(models);
+    groups.forEach((group) => {
+      const og = document.createElement('optgroup');
+      og.label = group.label;
+      group.items.forEach((item) => {
+        const opt = document.createElement('option');
+        opt.value = item.modelName;
+        opt.textContent = item.label;
+        og.appendChild(opt);
+      });
+      modelSelect.appendChild(og);
+    });
+
+    const hasSelected = models.some((m) => m.modelName === selectedModel);
+    modelSelect.value = hasSelected ? selectedModel : (models[0]?.modelName || '');
+  }
+
+  async function fetchAndPopulateModels(apiKey, selectedModel = '') {
+    if (!apiKey) {
+      modelSelect.innerHTML = '';
+      modelSelect.disabled = true;
+      setModelSummary([]);
+      return;
+    }
+
+    modelSelect.disabled = true;
+    modelSelect.innerHTML = '<option>Loading models...</option>';
+
     try {
       const response = await fetch('https://api.zo.computer/models/available', {
+        method: 'GET',
         headers: {
-          'Authorization': `Bearer ${key}`,
-          'Accept': 'application/json'
-        }
+          Authorization: `Bearer ${apiKey}`,
+          Accept: 'application/json',
+        },
       });
-      
-      if (!response.ok) throw new Error(`Failed to load models: HTTP ${response.status}`);
+
+      if (response.status === 401 || response.status === 403) {
+        throw new Error('Invalid API key for model list');
+      }
+      if (!response.ok) {
+        throw new Error(`Model list failed: HTTP ${response.status}`);
+      }
 
       const data = await response.json();
-      loadedModels = (data.models || [])
-        .filter((m) => m && m.model_name)
-        .map((m) => ({
-          provider: (m.vendor || "Unknown").trim(),
-          modelName: m.model_name,
-          label: (m.label || m.model_name).trim(),
-          isByok: Boolean(m.is_byok),
-          type: m.type || "unknown",
-        }));
-
-      const groups = new Map();
-      loadedModels.forEach((m) => {
-        const group = m.isByok ? `BYOK, ${m.provider}` : `Native, ${m.provider}`;
-        if (!groups.has(group)) groups.set(group, []);
-        groups.get(group).push(m);
-      });
-
-      const sortedGroups = [...groups.entries()]
-        .map(([label, items]) => ({
-          label,
-          items: [...items].sort((a, b) => a.label.localeCompare(b.label)),
-        }))
-        .sort((a, b) => a.label.localeCompare(b.label));
-
-      const oldVal = modelSelect.value || result.zoModel;
-      modelSelect.innerHTML = '';
-      
-      sortedGroups.forEach((g) => {
-        const og = document.createElement('optgroup');
-        og.label = g.label;
-        g.items.forEach((item) => {
-          const opt = document.createElement('option');
-          opt.value = item.modelName;
-          opt.textContent = item.label;
-          og.appendChild(opt);
-        });
-        modelSelect.appendChild(og);
-      });
-
-      if (oldVal && [...modelSelect.options].some(o => o.value === oldVal)) {
-        modelSelect.value = oldVal;
+      loadedModels = normalizeModels(data.models || []);
+      if (!loadedModels.length) {
+        modelSelect.innerHTML = '<option>No models available</option>';
+        modelSelect.disabled = true;
+        setModelSummary([]);
+        return;
       }
-      
+
+      renderModelOptions(loadedModels, selectedModel);
+      modelSelect.disabled = false;
       setModelSummary(loadedModels);
-    } catch (e) {
+
+      const byokCount = loadedModels.filter((m) => m.isByok).length;
+      if (byokCount === 0) {
+        showStatus('No BYOK models returned for this API key.', 'error');
+      }
+    } catch (error) {
       modelSelect.innerHTML = '<option>Unable to load models</option>';
-      modelSummary.textContent = String(e.message || e);
+      modelSelect.disabled = true;
+      setModelSummary([]);
+      showStatus(error.message, 'error');
     }
   }
 
-  if (result.zoApiKey) {
-    refreshModels(result.zoApiKey);
-  } else {
-    modelSelect.innerHTML = '<option>Enter API key to load models</option>';
-  }
+  const result = await chrome.storage.sync.get(['zoApiKey', 'zoModel']);
+  if (result.zoApiKey) apiKeyInput.value = result.zoApiKey;
 
-  apiKeyInput.addEventListener('blur', () => {
-    if (apiKeyInput.value.trim()) refreshModels(apiKeyInput.value.trim());
+  await fetchAndPopulateModels(result.zoApiKey || '', result.zoModel || '');
+
+  reloadModelsBtn.addEventListener('click', async () => {
+    const apiKey = apiKeyInput.value.trim();
+    await fetchAndPopulateModels(apiKey, modelSelect.value);
   });
 
-  reloadModelsBtn.addEventListener('click', () => {
-    if (apiKeyInput.value.trim()) refreshModels(apiKeyInput.value.trim());
+  apiKeyInput.addEventListener('blur', async () => {
+    const apiKey = apiKeyInput.value.trim();
+    await fetchAndPopulateModels(apiKey, modelSelect.value);
   });
 
-  // Save settings
   saveBtn.addEventListener('click', async () => {
     const apiKey = apiKeyInput.value.trim();
     const model = modelSelect.value;
-    const handle = handleInput.value.trim();
 
     if (!apiKey) {
       showStatus('Please enter an API key', 'error');
       return;
     }
+    if (!model) {
+      showStatus('Please load/select a default model', 'error');
+      return;
+    }
 
     try {
-      await chrome.storage.sync.set({
-        zoApiKey: apiKey,
-        zoModel: model,
-        zoHandle: handle
-      });
+      await chrome.storage.sync.set({ zoApiKey: apiKey, zoModel: model });
+      await fetchAndPopulateModels(apiKey, model);
       showStatus('Settings saved successfully!', 'success');
-      refreshModels(apiKey);
     } catch (error) {
       showStatus(`Error saving: ${error.message}`, 'error');
     }

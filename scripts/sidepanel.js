@@ -1,11 +1,11 @@
 import { getSettings } from "./core/settings-store.js";
 import { getActiveTabContext } from "./core/page-context.js";
-import { askZo, listAvailableModels } from "./core/zo-client.js";
+import { askZo, askZoStream, listAvailableModels } from "./core/zo-client.js";
 import { groupModels, chooseInitialModel } from "./core/model-catalog.js";
 import { getThread, saveThread, clearThread, listThreadMetas, normalizeUrlToThreadId } from "./core/chat-store.js";
 import { sortHistory } from "./core/history-index.js";
-import { getLocalArtifacts, getZoWorkspaceFiles } from "./core/files-provider.js";
-import { savePageArtifact, formatArtifactPath } from "./core/saved-pages.js";
+import { getLocalArtifacts, getZoWorkspaceFiles, getZoDirectoryListing } from "./core/files-provider.js";
+import { savePageArtifact, deleteSavedPage, formatArtifactPath } from "./core/saved-pages.js";
 import { buildOpenInZoUrl } from "./core/open-in-zo.js";
 
 if (typeof marked !== "undefined") {
@@ -14,8 +14,7 @@ if (typeof marked !== "undefined") {
 
 let state = {
   apiKey: "",
-  handle: "",
-  defaultModel: "z-ai/glm-5",
+  defaultModel: "openrouter:z-ai/glm-5",
   selectedModel: "",
   context: null,
   messages: [],
@@ -23,6 +22,8 @@ let state = {
   modelsReady: false,
   inFlightRequestId: 0,
 };
+
+const savesInFlight = new Set();
 
 const el = {
   pageTitle: document.getElementById("page-title"),
@@ -88,6 +89,40 @@ function renderChat() {
     el.chatMessages.appendChild(d);
   });
 
+  el.chatMessages.scrollTop = el.chatMessages.scrollHeight;
+}
+
+function appendStreamingBubble() {
+  const d = document.createElement("div");
+  d.className = "message assistant streaming";
+  d.innerHTML = `<span class="streaming-cursor"></span>`;
+  el.chatMessages.appendChild(d);
+  el.chatMessages.scrollTop = el.chatMessages.scrollHeight;
+  return d;
+}
+
+function updateStreamingBubble(bubble, content) {
+  if (typeof marked !== "undefined") {
+    bubble.innerHTML = marked.parse(content) + `<span class="streaming-cursor"></span>`;
+    bubble.querySelectorAll("pre code").forEach((b) => {
+      if (typeof hljs !== "undefined") hljs.highlightElement(b);
+    });
+  } else {
+    bubble.textContent = content;
+  }
+  el.chatMessages.scrollTop = el.chatMessages.scrollHeight;
+}
+
+function finalizeStreamingBubble(bubble, content) {
+  bubble.classList.remove("streaming");
+  if (typeof marked !== "undefined") {
+    bubble.innerHTML = marked.parse(content);
+    bubble.querySelectorAll("pre code").forEach((b) => {
+      if (typeof hljs !== "undefined") hljs.highlightElement(b);
+    });
+  } else {
+    bubble.textContent = content;
+  }
   el.chatMessages.scrollTop = el.chatMessages.scrollHeight;
 }
 
@@ -194,13 +229,41 @@ async function sendChat() {
     messages: workingMessages,
   });
 
+  const isCurrentContext = () =>
+    state.context?.url === lockedContext.url && requestId === state.inFlightRequestId;
+
+  let bubble = null;
+  if (isCurrentContext()) {
+    bubble = appendStreamingBubble();
+  }
+  setActionAvailability(false);
+
   const contextText = lockedContext.content.slice(0, 12000);
   const recent = workingMessages.slice(-10).map((m) => `${m.role}: ${m.content}`).join("\n\n");
   const prompt = `You are helping with this webpage.\nTitle: ${lockedContext.title}\nURL: ${lockedContext.url}\n\nPage:\n${contextText}\n\nConversation:\n${recent}\n\nLatest question: ${q}\n\nRespond in markdown.`;
 
   try {
-    const data = await askZo({ apiKey: state.apiKey, model: lockedModel, input: prompt });
-    const finalMessages = [...workingMessages, { role: "assistant", content: data.output || "No response" }];
+    const finalContent = await askZoStream({
+      apiKey: state.apiKey,
+      model: lockedModel,
+      input: prompt,
+      onChunk(fullText) {
+        if (bubble && isCurrentContext()) {
+          updateStreamingBubble(bubble, fullText);
+        }
+      },
+      onDone(fullText) {
+        if (bubble && isCurrentContext()) {
+          finalizeStreamingBubble(bubble, fullText);
+        }
+      },
+      onError(err) {
+        setStatus(String(err.message || err));
+      },
+    });
+
+    const output = finalContent || "No response";
+    const finalMessages = [...workingMessages, { role: "assistant", content: output }];
 
     await persistMessagesForContext({
       url: lockedContext.url,
@@ -208,12 +271,15 @@ async function sendChat() {
       messages: finalMessages,
     });
 
-    if (state.context?.url === lockedContext.url && requestId === state.inFlightRequestId) {
+    if (isCurrentContext()) {
+      if (bubble) finalizeStreamingBubble(bubble, output);
       state.messages = finalMessages;
-      renderChat();
     }
   } catch (e) {
+    if (bubble) bubble.remove();
     setStatus(String(e.message || e));
+  } finally {
+    setActionAvailability(true);
   }
 }
 
@@ -221,36 +287,31 @@ async function savePageToZo() {
   if (!state.modelsReady) return setStatus("Model list unavailable");
   if (!state.apiKey || !state.context || !state.selectedModel) return setStatus("Missing API key, page context, or model");
 
-  try {
-    const input = `Save this webpage to memory. First, search the Bookmarks folder to see if a markdown file for this exact URL already exists. If it does, do not create a new one, and just reply 'ALREADY_SAVED'. If it does not exist, create a detailed markdown summary of the page and save it in the Bookmarks folder. When finished, reply 'SAVED'.\nTitle: ${state.context.title}\nURL: ${state.context.url}\n\nContent:\n${(state.context.content || "").slice(0, 15000)}`;
-    const data = await askZo({ apiKey: state.apiKey, model: state.selectedModel, input });
+  const url = state.context.url;
+  
+  el.saveBtn.disabled = true;
+  el.saveBtn.innerHTML = 'Saved';
+  setStatus("Page saved locally and syncing to Zo. Safe to close.");
 
-    if (data && data.output && data.output.includes("ALREADY_SAVED")) {
-      await savePageArtifact({
-        url: state.context.url,
-        title: state.context.title,
-        model: state.selectedModel,
-        zoSaved: true,
-      });
-      el.saveBtn.textContent = '✓ Saved';
-      el.saveBtn.disabled = true;
-      setStatus("Already saved in Zo Workspace");
-    } else {
-      await savePageArtifact({
-        url: state.context.url,
-        title: state.context.title,
-        model: state.selectedModel,
-        zoSaved: true,
-      });
-      el.saveBtn.textContent = '✓ Saved';
-      el.saveBtn.disabled = true;
-      setStatus("Saved to Zo Bookmarks folder");
+  await savePageArtifact({
+    url: state.context.url,
+    title: state.context.title,
+    model: state.selectedModel,
+    zoSaved: false,
+  });
+
+  chrome.runtime.sendMessage({
+    type: "BACKGROUND_SAVE",
+    url: state.context.url,
+    title: state.context.title,
+    content: state.context.content || "",
+    apiKey: state.apiKey,
+    model: state.selectedModel
+  }, (response) => {
+    if (chrome.runtime.lastError) {
+      console.warn("Background script not ready:", chrome.runtime.lastError);
     }
-  } catch (e) {
-    setStatus(String(e.message || e));
-  } finally {
-    el.saveBtn.classList.remove("btn-saving");
-  }
+  });
 }
 
 async function refreshHistory() {
@@ -259,10 +320,13 @@ async function refreshHistory() {
 
   metas.forEach((m) => {
     const r = document.createElement("div");
-    r.className = "row";
-    r.innerHTML = `<div>${m.title || m.url || "Untitled"}</div><div class="meta">${m.url || ""} • ${m.messageCount || 0} msgs</div>`;
-    r.title = m.url || m.title || "";
-    r.addEventListener("click", async () => {
+    r.className = "row row-with-delete";
+
+    const content = document.createElement("div");
+    content.className = "row-content";
+    content.innerHTML = `<div>${m.title || m.url || "Untitled"}</div><div class="meta">${m.url || ""} • ${m.messageCount || 0} msgs</div>`;
+    content.title = m.url || m.title || "";
+    content.addEventListener("click", async () => {
       const thread = await getThread(m.url);
       if (thread) {
         state.context = { ...(state.context || {}), url: m.url, title: m.title || state.context?.title || "" };
@@ -275,8 +339,144 @@ async function refreshHistory() {
         switchPane("chat");
       }
     });
+
+    const delBtn = document.createElement("button");
+    delBtn.className = "row-delete-btn";
+    delBtn.textContent = "×";
+    delBtn.title = "Delete thread";
+    delBtn.addEventListener("click", async (e) => {
+      e.stopPropagation();
+      await clearThread(m.url);
+      if (state.context?.url === m.url) {
+        state.messages = [];
+        renderChat();
+      }
+      await refreshHistory();
+    });
+
+    r.appendChild(content);
+    r.appendChild(delBtn);
     el.historyList.appendChild(r);
   });
+}
+
+function insertFileReference(filePath) {
+  const ref = `[file: ${filePath}]`;
+  const input = el.chatInput;
+  const start = input.selectionStart || 0;
+  const before = input.value.slice(0, start);
+  const after = input.value.slice(input.selectionEnd || start);
+  const spaceBefore = before && !before.endsWith(" ") && !before.endsWith("\n") ? " " : "";
+  const spaceAfter = after && !after.startsWith(" ") && !after.startsWith("\n") ? " " : "";
+  input.value = before + spaceBefore + ref + spaceAfter + after;
+  input.focus();
+  const newPos = start + spaceBefore.length + ref.length + spaceAfter.length;
+  input.setSelectionRange(newPos, newPos);
+  switchPane("chat");
+  setStatus(`Referenced: ${filePath.split("/").pop()}`);
+}
+
+function renderLocalFiles(items) {
+  el.filesList.innerHTML = items.length ? "" : `<div class="row">No files found</div>`;
+  items.forEach((i) => {
+    const r = document.createElement("div");
+    r.className = "row row-with-delete";
+
+    const content = document.createElement("div");
+    content.className = "row-content";
+    content.innerHTML = `<div>${i.path || "(no path)"}</div><div class="meta">${i.kind || "file"} • ${i.summary || ""}</div>`;
+    content.title = i.path || "";
+
+    const delBtn = document.createElement("button");
+    delBtn.className = "row-delete-btn";
+    delBtn.textContent = "×";
+    delBtn.title = `Delete ${i.kind}`;
+    delBtn.addEventListener("click", async (e) => {
+      e.stopPropagation();
+      if (i.kind === "thread" && i.url) {
+        await clearThread(i.url);
+        if (state.context?.url === i.url) {
+          state.messages = [];
+          renderChat();
+        }
+      } else if (i.kind === "saved-page" && i.url) {
+        await deleteSavedPage(i.url);
+      }
+      await refreshFiles();
+      await refreshHistory();
+    });
+
+    r.appendChild(content);
+    r.appendChild(delBtn);
+    el.filesList.appendChild(r);
+  });
+}
+
+async function loadZoDirectory(container, dirPath) {
+  const loadingRow = document.createElement("div");
+  loadingRow.className = "tree-loading";
+  loadingRow.textContent = "Loading...";
+  container.appendChild(loadingRow);
+
+  try {
+    const entries = await getZoDirectoryListing({ apiKey: state.apiKey, dirPath });
+    loadingRow.remove();
+
+    if (!entries.length) {
+      const empty = document.createElement("div");
+      empty.className = "tree-empty";
+      empty.textContent = "Empty folder";
+      container.appendChild(empty);
+      return;
+    }
+
+    const dirs = entries.filter((e) => e.type === "directory").sort((a, b) => a.name.localeCompare(b.name));
+    const files = entries.filter((e) => e.type !== "directory").sort((a, b) => a.name.localeCompare(b.name));
+
+    [...dirs, ...files].forEach((entry) => {
+      const row = document.createElement("div");
+      row.className = "tree-item";
+
+      if (entry.type === "directory") {
+        row.classList.add("tree-folder");
+        row.innerHTML = `<span class="tree-icon">▶</span><span class="tree-name">${entry.name}</span>`;
+        row.title = entry.path;
+
+        let expanded = false;
+        let childContainer = null;
+
+        row.addEventListener("click", async () => {
+          expanded = !expanded;
+          row.querySelector(".tree-icon").textContent = expanded ? "▼" : "▶";
+          row.classList.toggle("expanded", expanded);
+
+          if (expanded) {
+            if (!childContainer) {
+              childContainer = document.createElement("div");
+              childContainer.className = "tree-children";
+              row.after(childContainer);
+              await loadZoDirectory(childContainer, entry.path);
+            }
+            childContainer.classList.remove("hidden");
+          } else if (childContainer) {
+            childContainer.classList.add("hidden");
+          }
+        });
+      } else {
+        row.classList.add("tree-file");
+        row.innerHTML = `<span class="tree-icon">📄</span><span class="tree-name">${entry.name}</span>`;
+        row.title = `Click to reference: ${entry.path}`;
+
+        row.addEventListener("click", () => {
+          insertFileReference(entry.path);
+        });
+      }
+
+      container.appendChild(row);
+    });
+  } catch (e) {
+    loadingRow.textContent = `Failed: ${String(e.message || e)}`;
+  }
 }
 
 async function refreshFiles() {
@@ -284,25 +484,13 @@ async function refreshFiles() {
   el.filesList.innerHTML = `<div class="row">Loading...</div>`;
 
   try {
-    const model = state.selectedModel || state.defaultModel;
-    const items = state.filesTab === "local"
-      ? await getLocalArtifacts({ query })
-      : await getZoWorkspaceFiles({
-          apiKey: state.apiKey,
-          model,
-          defaultModel: state.defaultModel,
-          pageUrl: state.context?.url,
-          query,
-        });
-
-    el.filesList.innerHTML = items.length ? "" : `<div class="row">No files found</div>`;
-    items.forEach((i) => {
-      const r = document.createElement("div");
-      r.className = "row";
-      r.innerHTML = `<div>${i.path || "(no path)"}</div><div class="meta">${i.kind || "file"} • ${i.summary || ""}</div>`;
-      r.title = i.path || "";
-      el.filesList.appendChild(r);
-    });
+    if (state.filesTab === "local") {
+      const items = await getLocalArtifacts({ query });
+      renderLocalFiles(items);
+    } else {
+      el.filesList.innerHTML = "";
+      await loadZoDirectory(el.filesList, "/home/workspace");
+    }
   } catch (e) {
     el.filesList.innerHTML = `<div class="row">Failed to load files: ${String(e.message || e)}</div>`;
   }
@@ -323,7 +511,6 @@ function switchFilesPane(name) {
 async function init() {
   const settings = await getSettings();
   state.apiKey = settings.apiKey;
-  state.handle = settings.handle;
   state.defaultModel = settings.model;
 
   await loadContextAndThread();
@@ -360,7 +547,7 @@ async function init() {
 
   el.saveBtn.addEventListener("click", savePageToZo);
   el.openInZoBtn.addEventListener("click", () => {
-    const url = buildOpenInZoUrl({ pageUrl: state.context?.url, pageTitle: state.context?.title, handle: state.handle });
+    const url = buildOpenInZoUrl({ pageUrl: state.context?.url, pageTitle: state.context?.title });
     chrome.tabs.create({ url });
   });
 

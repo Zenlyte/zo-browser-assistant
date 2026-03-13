@@ -1,102 +1,40 @@
 import { normalizeModels } from "./model-catalog.js";
 
-const FILES_PROMPT = (pageUrl, query) => `List up to 50 files and folders from the Zo workspace that are relevant to:
-- Current page URL: ${pageUrl || "(none)"}
-- Search query: ${query || "(none)"}
+const FILES_PROMPT = (pageUrl, query) => `Return up to 30 workspace files relevant to this URL and query.
+URL: ${pageUrl || ""}
+Query: ${query || ""}
+Return JSON only with shape:
+{"items":[{"path":"...","kind":"...","summary":"..."}]}`;
 
-Return a JSON object with a hierarchical tree structure:
-{
-  "folders": [
-    {
-      "name": "Folder Name",
-      "path": "/path/to/folder",
-      "items": [
-        {"name": "file.md", "path": "/path/to/folder/file.md", "type": "file", "size": "12KB", "modified": "2024-01-15", "summary": "Brief description"}
-      ]
-    }
-  ],
-  "files": [
-    {"name": "root-file.md", "path": "/path/to/root-file.md", "type": "file", "size": "8KB", "modified": "2024-01-10", "summary": "Brief description"}
-  ]
-}
-
-Requirements:
-- Include file size (human readable like "12KB", "1.5MB")
-- Include last modified date (YYYY-MM-DD format)
-- Include file type/extension
-- Include a brief 1-line summary of each file's content/purpose
-- Group files by their parent folder
-- Limit to most relevant 50 items total
-- Prioritize files related to: ${pageUrl || query || "general workspace content"}`;
+const TREE_PROMPT = (dirPath) => `List all files and folders in the directory "${dirPath || "/home/workspace"}". Use the list_files tool. Return JSON only with shape:
+{"entries":[{"name":"filename","path":"/full/path","type":"file_or_directory"}]}
+Include ALL entries. Do not summarize or omit. Return the raw listing as JSON.`;
 
 function uniqueModels(models = []) {
   return [...new Set(models.filter(Boolean))];
 }
 
-function parseTreeFromOutput(output) {
-  if (typeof output !== "object" || output === null) {
-    const text = typeof output === "string" ? output : "";
-    if (!text) return null;
-    
-    try {
-      const parsed = JSON.parse(text);
-      if (parsed?.folders || parsed?.files) return parsed;
-    } catch {
-      const match = text.match(/\{[\s\S]*\}/);
-      if (match) {
-        try {
-          const parsed = JSON.parse(match[0]);
-          if (parsed?.folders || parsed?.files) return parsed;
-        } catch {}
-      }
-    }
-    return null;
-  }
-  
-  if (output?.folders || output?.files) return output;
-  return null;
-}
+function parseItemsFromOutput(output) {
+  if (Array.isArray(output?.items)) return output.items;
 
-function flattenTreeToItems(tree = {}) {
-  const items = [];
-  
-  // Process folders and their nested items
-  (tree.folders || []).forEach(folder => {
-    items.push({
-      path: folder.path,
-      kind: "folder",
-      summary: folder.name || "",
-      type: "folder",
-      size: "",
-      modified: ""
-    });
-    
-    // Add nested files in this folder
-    (folder.items || []).forEach(item => {
-      items.push({
-        path: item.path || `${folder.path}/${item.name}`,
-        kind: "file",
-        summary: item.summary || "",
-        type: item.type || "file",
-        size: item.size || "",
-        modified: item.modified || ""
-      });
-    });
-  });
-  
-  // Add root-level files
-  (tree.files || []).forEach(file => {
-    items.push({
-      path: file.path || file.name,
-      kind: "file",
-      summary: file.summary || "",
-      type: file.type || "file",
-      size: file.size || "",
-      modified: file.modified || ""
-    });
-  });
-  
-  return items.slice(0, 50);
+  const text = typeof output === "string" ? output : "";
+  if (!text) return [];
+
+  try {
+    const parsed = JSON.parse(text);
+    if (Array.isArray(parsed?.items)) return parsed.items;
+    if (Array.isArray(parsed)) return parsed;
+  } catch {
+    const match = text.match(/\{[\s\S]*\}/);
+    if (match) {
+      try {
+        const parsed = JSON.parse(match[0]);
+        if (Array.isArray(parsed?.items)) return parsed.items;
+      } catch {}
+    }
+  }
+
+  return [];
 }
 
 function sanitizeItems(items = []) {
@@ -106,9 +44,6 @@ function sanitizeItems(items = []) {
       path: i.path.trim(),
       kind: typeof i.kind === "string" ? i.kind : "file",
       summary: typeof i.summary === "string" ? i.summary : "",
-      type: typeof i.type === "string" ? i.type : "",
-      size: typeof i.size === "string" ? i.size : "",
-      modified: typeof i.modified === "string" ? i.modified : ""
     }));
 }
 
@@ -124,6 +59,66 @@ export async function askZo({ apiKey, model, input }) {
   });
   if (!res.ok) throw new Error(`Zo API error: ${res.status}`);
   return res.json();
+}
+
+export async function askZoStream({ apiKey, model, input, onChunk, onDone, onError }) {
+  const res = await fetch("https://api.zo.computer/zo/ask", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      "Content-Type": "application/json",
+      Accept: "text/event-stream",
+    },
+    body: JSON.stringify({ input, model_name: model, stream: true }),
+  });
+
+  if (!res.ok) {
+    const errText = await res.text().catch(() => "");
+    throw new Error(`Zo API error: ${res.status} ${errText}`);
+  }
+
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let fullContent = "";
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+
+    buffer += decoder.decode(value, { stream: true });
+
+    const lines = buffer.split("\n");
+    buffer = lines.pop() || "";
+
+    let eventType = "";
+    for (const line of lines) {
+      if (line.startsWith("event: ")) {
+        eventType = line.slice(7).trim();
+      } else if (line.startsWith("data: ")) {
+        const dataStr = line.slice(6);
+        try {
+          const data = JSON.parse(dataStr);
+          if (eventType === "FrontendModelResponse" && data.content) {
+            fullContent += data.content;
+            onChunk(fullContent, data.content);
+          } else if (eventType === "Error") {
+            if (onError) onError(new Error(data.message || "Stream error"));
+            return fullContent;
+          } else if (eventType === "End") {
+            if (onDone) onDone(fullContent);
+            return fullContent;
+          }
+        } catch {}
+        eventType = "";
+      } else if (line === "") {
+        eventType = "";
+      }
+    }
+  }
+
+  if (onDone) onDone(fullContent);
+  return fullContent;
 }
 
 export async function listAvailableModels({ apiKey }) {
@@ -156,32 +151,20 @@ async function tryListFilesWithModel({ apiKey, model, pageUrl, query, useOutputF
     body.output_format = {
       type: "object",
       properties: {
-        folders: {
+        items: {
           type: "array",
           items: {
             type: "object",
             properties: {
-              name: { type: "string" },
               path: { type: "string" },
-              items: { type: "array" }
-            }
-          }
+              kind: { type: "string" },
+              summary: { type: "string" },
+            },
+            required: ["path"],
+          },
         },
-        files: {
-          type: "array",
-          items: {
-            type: "object",
-            properties: {
-              name: { type: "string" },
-              path: { type: "string" },
-              type: { type: "string" },
-              size: { type: "string" },
-              modified: { type: "string" },
-              summary: { type: "string" }
-            }
-          }
-        }
       },
+      required: ["items"],
     };
   }
 
@@ -202,47 +185,105 @@ async function tryListFilesWithModel({ apiKey, model, pageUrl, query, useOutputF
   }
 
   const data = await res.json();
-  const tree = parseTreeFromOutput(data.output);
-  const items = tree ? flattenTreeToItems(tree) : [];
-  return sanitizeItems(items);
+  const items = sanitizeItems(parseItemsFromOutput(data.output));
+  return items;
 }
 
 export async function listZoWorkspaceFiles({ apiKey, model, defaultModel, pageUrl, query }) {
   const fallbackModel = "vercel:zai/glm-5";
-  const modelsToTry = uniqueModels([model, defaultModel, fallbackModel]);
 
   let lastError = null;
 
-  for (const m of modelsToTry) {
-    if (!m) continue;
+  try {
+    const strictItems = await tryListFilesWithModel({
+      apiKey,
+      model: fallbackModel,
+      pageUrl,
+      query,
+      useOutputFormat: true,
+    });
+    if (strictItems.length) return strictItems;
 
-    try {
-      const items = await tryListFilesWithModel({
-        apiKey,
-        model: m,
-        pageUrl,
-        query,
-        useOutputFormat: true,
-      });
-      if (items.length) return items;
-
-      const relaxedItems = await tryListFilesWithModel({
-        apiKey,
-        model: m,
-        pageUrl,
-        query,
-        useOutputFormat: false,
-      });
-      if (relaxedItems.length) return relaxedItems;
-    } catch (e) {
-      lastError = e;
-      if (e.status === 401 || e.status === 403) throw e;
-    }
+    const relaxedItems = await tryListFilesWithModel({
+      apiKey,
+      model: fallbackModel,
+      pageUrl,
+      query,
+      useOutputFormat: false,
+    });
+    if (relaxedItems.length) return relaxedItems;
+  } catch (e) {
+    lastError = e;
   }
 
   if (lastError) {
-    throw new Error(`Failed to load Zo Workspace Files: ${lastError.message}`);
+    throw new Error(`Failed to load Zo Workspace Files with fallback model (${fallbackModel}): ${lastError.message}`);
   }
 
   return [];
+}
+
+function parseTreeEntries(output) {
+  const text = typeof output === "string" ? output : JSON.stringify(output || "");
+  if (!text) return [];
+
+  try {
+    const parsed = JSON.parse(text);
+    if (Array.isArray(parsed?.entries)) return parsed.entries;
+    if (Array.isArray(parsed)) return parsed;
+  } catch {
+    const match = text.match(/\{[\s\S]*\}/);
+    if (match) {
+      try {
+        const parsed = JSON.parse(match[0]);
+        if (Array.isArray(parsed?.entries)) return parsed.entries;
+      } catch {}
+    }
+  }
+
+  // Fallback: parse tree-style text output like "  - name/" or "  - name"
+  const lines = text.split("\n");
+  const entries = [];
+  for (const line of lines) {
+    const trimmed = line.replace(/^[\s\-•]+/, "").trim();
+    if (!trimmed || trimmed.startsWith("#") || trimmed.startsWith("(")) continue;
+    const isDir = trimmed.endsWith("/");
+    const name = isDir ? trimmed.slice(0, -1) : trimmed;
+    if (name && !name.includes("{") && !name.includes(":") && name.length < 200) {
+      entries.push({ name, type: isDir ? "directory" : "file" });
+    }
+  }
+  return entries;
+}
+
+export async function listZoDirectory({ apiKey, dirPath }) {
+  const fallbackModel = "vercel:zai/glm-5";
+
+  const res = await fetch("https://api.zo.computer/zo/ask", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      "Content-Type": "application/json",
+      Accept: "application/json",
+    },
+    body: JSON.stringify({
+      input: TREE_PROMPT(dirPath),
+      model_name: fallbackModel,
+    }),
+  });
+
+  if (!res.ok) throw new Error(`Zo API error: ${res.status}`);
+
+  const data = await res.json();
+  const entries = parseTreeEntries(data.output);
+
+  return entries
+    .filter((e) => e && (e.name || e.path))
+    .map((e) => {
+      const name = e.name || (e.path ? e.path.split("/").pop() : "");
+      const fullPath = e.path || `${dirPath || "/home/workspace"}/${name}`;
+      const type = e.type === "directory" || e.type === "dir" || name.endsWith("/") ? "directory" : "file";
+      return { name: name.replace(/\/$/, ""), path: fullPath.replace(/\/$/, ""), type };
+    })
+    .filter((e) => e.name);
 }

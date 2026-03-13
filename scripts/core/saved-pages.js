@@ -22,6 +22,12 @@ export async function savePageArtifact({ url, title, model, zoSaved }) {
   return row;
 }
 
+export async function deleteSavedPage(url) {
+  const current = await listSavedPages();
+  const next = current.filter((r) => r.url !== url);
+  await chrome.storage.local.set({ [SAVED_PAGES_KEY]: next });
+}
+
 export function formatArtifactPath(url) {
   try {
     const u = new URL(url);
