@@ -29,7 +29,7 @@ Chrome extension for saving webpages to Zo and chatting with page context in eit
 - Open in Zo deep link with configurable handle.
 - Dynamic model dropdown sourced from `/models/available` API (native + BYOK).
 - TokenCut compression on saved content for reduced token usage in downstream LLM calls.
-- Save pipeline: Zo Bookmarks (markdown), Fabric, Mem.ai, Raindrop.io.
+- Save pipeline: Instant local save + background sync to Zo Bookmarks (markdown summary).
 
 ## Install
 
@@ -44,3 +44,21 @@ Chrome extension for saving webpages to Zo and chatting with page context in eit
 - Workspace file listing is requested through Zo API and may depend on account permissions/response quality.
 - Save uses `agent-browser` for page content extraction with HTML fetch fallback.
 - Content is compressed via TokenCut (AgentReady API) before storage to save tokens on future LLM consumption.
+
+## Customizing Save Behavior
+
+When you click **Save to Zo**, the extension sends a generic "save this webpage" prompt to your Zo server. By default, Zo saves a markdown summary to `/Bookmarks` in your workspace.
+
+You can fully customize what happens next:
+
+**1. Faster saves with TokenCut**
+
+Install the [`@tokencut` skill](https://github.com/zocomputer/skills) from the Zo Skills registry. It compresses extracted page text by ~40–60% before it hits the LLM — reducing token usage on every save.
+
+**2. Custom integrations via Zo Rules**
+
+Add a Zo Rule that intercepts save prompts and runs your own script. Example rule condition:
+
+> *When asked to save a URL, run `/home/workspace/Scripts/save_url.ts`*
+
+Your script can then sync the bookmark to any platform connected to your Zo (e.g. Raindrop.io, Notion, a self-hosted database). The extension itself is platform-agnostic — the integration logic lives entirely on your Zo server, so each user's setup is their own.
