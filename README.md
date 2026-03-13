@@ -45,6 +45,12 @@ Chrome extension for saving webpages to Zo and chatting with page context in eit
 - Save uses `agent-browser` for page content extraction with HTML fetch fallback.
 - Content is compressed via TokenCut (AgentReady API) before storage to save tokens on future LLM consumption.
 
+## Streaming Chat Responses
+
+- Token-by-token streaming via Server-Sent Events (SSE) for real-time updates.
+- **Fixed in v1.2:** Improved streaming parser reliability for more consistent token delivery.
+- Fixed edge case where "No response" appeared despite successful API calls.
+
 ## Customizing Save Behavior
 
 When you click **Save to Zo**, the extension sends a generic "save this webpage" prompt to your Zo server. By default, Zo saves a markdown summary to `/Bookmarks` in your workspace.
