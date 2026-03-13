@@ -81,6 +81,7 @@ export async function askZoStream({ apiKey, model, input, onChunk, onDone, onErr
   const decoder = new TextDecoder();
   let buffer = "";
   let fullContent = "";
+  let isComplete = false;
 
   while (true) {
     const { done, value } = await reader.read();
@@ -99,25 +100,42 @@ export async function askZoStream({ apiKey, model, input, onChunk, onDone, onErr
         const dataStr = line.slice(6);
         try {
           const data = JSON.parse(dataStr);
-          if (eventType === "FrontendModelResponse" && data.content) {
-            fullContent += data.content;
-            onChunk(fullContent, data.content);
-          } else if (eventType === "Error") {
-            if (onError) onError(new Error(data.message || "Stream error"));
-            return fullContent;
-          } else if (eventType === "End") {
-            if (onDone) onDone(fullContent);
-            return fullContent;
+          
+          // Handle different response formats
+          if (eventType === "FrontendModelResponse" || eventType === "ModelResponse") {
+            if (data.content) {
+              fullContent += data.content;
+              onChunk(fullContent, data.content);
+            } else if (data.output && typeof data.output === "string") {
+              // Non-streaming format - treat as complete response
+              fullContent = data.output;
+              onChunk(fullContent, data.output);
+            }
+          } else if (eventType === "FrontendModelResponseError" || eventType === "Error") {
+            if (onError) onError(new Error(data.message || data.error || "Stream error"));
+            isComplete = true;
+          } else if (eventType === "End" || eventType === "FrontendModelResponseEnd") {
+            isComplete = true;
+            if (onDone && !isComplete) onDone(fullContent);
           }
-        } catch {}
+        } catch (e) {
+          // Failed to parse JSON - might be plain text output
+          if (dataStr && dataStr !== "[DONE]") {
+            fullContent += dataStr;
+            onChunk(fullContent, dataStr);
+          }
+        }
+        // Always reset eventType after processing data line
         eventType = "";
       } else if (line === "") {
+        // Empty line marks end of event
         eventType = "";
       }
     }
   }
 
-  if (onDone) onDone(fullContent);
+  // Final done callback
+  if (onDone && !isComplete) onDone(fullContent);
   return fullContent;
 }
 
