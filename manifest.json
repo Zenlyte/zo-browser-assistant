@@ -51,6 +51,12 @@
         "default": "Ctrl+Shift+X"
       },
       "description": "Quick Save to Zo"
+    },
+    "activate-save": {
+      "suggested_key": {
+        "default": "Ctrl+Shift+A"
+      },
+      "description": "Open Popup and Save to Zo"
     }
   }
 }

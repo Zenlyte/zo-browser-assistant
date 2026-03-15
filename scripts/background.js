@@ -290,3 +290,32 @@ chrome.commands.onCommand.addListener(async (command, tab) => {
     return;
   }
 });
+
+// Handle activate-save command: open popup and trigger save
+chrome.commands.onCommand.addListener(async (command, tab) => {
+  if (command === "activate-save") {
+    // First open the popup
+    chrome.action.openPopup();
+    
+    // Wait a moment then send save message to popup
+    setTimeout(async () => {
+      try {
+        // Get current tab info
+        const [activeTab] = await chrome.tabs.query({ active: true, currentWindow: true });
+        if (!activeTab?.id) return;
+        
+        // Execute save script
+        chrome.scripting.executeScript({
+          target: { tabId: activeTab.id },
+          func: () => {
+            // Trigger save button click if popup is open
+            const saveBtn = document.getElementById('save-btn');
+            if (saveBtn) saveBtn.click();
+          }
+        });
+      } catch (err) {
+        console.error('activate-save error:', err);
+      }
+    }, 500);
+  }
+});
