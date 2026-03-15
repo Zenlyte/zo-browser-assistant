@@ -249,12 +249,16 @@ chrome.commands.onCommand.addListener(async (command, tab) => {
       // Get API key from storage
       const { zoApiKey: apiKey, zoModel: model } = await chrome.storage.sync.get(['zoApiKey', 'zoModel']);
       if (!apiKey) {
-        chrome.notifications?.create({
-          type: 'basic',
-          iconUrl: 'icons/icon48.png',
-          title: 'Zo Extension',
-          message: 'Please configure your Zo API key in extension settings'
-        });
+        if (chrome.notifications) {
+          chrome.notifications.create({
+            type: 'basic',
+            iconUrl: 'icons/icon48.png',
+            title: 'Zo Extension',
+            message: 'Please configure your Zo API key in extension settings'
+          }).catch(() => {});
+        } else {
+          console.error('[Zo Extension] API key not configured');
+        }
         return;
       }
 
@@ -266,13 +270,18 @@ chrome.commands.onCommand.addListener(async (command, tab) => {
         zoSaved: false,
       });
 
-      // Show notification
-      chrome.notifications?.create({
-        type: 'basic',
-        iconUrl: 'icons/icon48.png',
-        title: 'Zo Extension',
-        message: `Saving "${pageData.title?.slice(0, 40) || 'Page'}" to Zo...`
-      });
+      // Show notification (fallback to console if notifications not available)
+      const notifMsg = `Saving "${pageData.title?.slice(0, 40) || 'Page'}" to Zo...`;
+      if (chrome.notifications) {
+        chrome.notifications.create({
+          type: 'basic',
+          iconUrl: 'icons/icon48.png',
+          title: 'Zo Extension',
+          message: notifMsg
+        }).catch(() => {});
+      } else {
+        console.log('[Zo Extension]', notifMsg);
+      }
 
       // Trigger background save
       chrome.runtime.sendMessage({
@@ -291,31 +300,35 @@ chrome.commands.onCommand.addListener(async (command, tab) => {
   }
 });
 
-// Handle activate-save command: open popup and trigger save
+// Handle activate-save command: open popup, extract data, then trigger save
 chrome.commands.onCommand.addListener(async (command, tab) => {
   if (command === "activate-save") {
-    // First open the popup
-    chrome.action.openPopup();
-    
-    // Wait a moment then send save message to popup
-    setTimeout(async () => {
-      try {
-        // Get current tab info
-        const [activeTab] = await chrome.tabs.query({ active: true, currentWindow: true });
-        if (!activeTab?.id) return;
-        
-        // Execute save script
-        chrome.scripting.executeScript({
-          target: { tabId: activeTab.id },
-          func: () => {
-            // Trigger save button click if popup is open
-            const saveBtn = document.getElementById('save-btn');
-            if (saveBtn) saveBtn.click();
-          }
-        });
-      } catch (err) {
-        console.error('activate-save error:', err);
+    try {
+      // Get current tab data first
+      const [activeTab] = await chrome.tabs.query({ active: true, currentWindow: true });
+      if (!activeTab?.id) return;
+      
+      // Check if this is a valid page (not chrome://, etc.)
+      const tabUrl = activeTab.url || '';
+      if (!tabUrl || tabUrl.startsWith('chrome://') || tabUrl.startsWith('chrome-extension://') || tabUrl.startsWith('about:')) {
+        console.log('[Zo Extension] Cannot save this page type');
+        return;
       }
-    }, 500);
+      
+      // Store the save intent for when popup opens
+      await chrome.storage.session.set({ 
+        'PENDING_SAVE': {
+          url: activeTab.url,
+          title: activeTab.title,
+          timestamp: Date.now()
+        }
+      });
+      
+      // Open popup
+      chrome.action.openPopup();
+      
+    } catch (err) {
+      console.error('[Zo Extension] activate-save error:', err);
+    }
   }
 });

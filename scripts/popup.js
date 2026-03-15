@@ -181,6 +181,19 @@ async function persist() {
 }
 
 async function init() {
+  // Check if we have a pending save from keyboard shortcut
+  const pendingSave = await chrome.storage.session.get('PENDING_SAVE');
+  const saveIntent = pendingSave.PENDING_SAVE;
+  
+  // Clear the pending save immediately so it doesn't trigger again
+  if (saveIntent) {
+    await chrome.storage.session.remove('PENDING_SAVE');
+    // Only use if it's recent (within last 10 seconds)
+    if (Date.now() - saveIntent.timestamp < 10000) {
+      state.saveOnLoad = true;
+    }
+  }
+  
   const s = await getSettings();
   state.apiKey = s.apiKey;
   state.defaultModel = s.model;
@@ -191,6 +204,13 @@ async function init() {
   }
 
   state.context = await getActiveTabContext();
+  
+  // If we had a pending save and now have context, trigger save
+  if (state.saveOnLoad && state.context && state.apiKey) {
+    state.saveOnLoad = false;
+    // Small delay to let UI render
+    setTimeout(() => savePage(), 300);
+  }
   if (state.context) {
     el.pageTitle.textContent = state.context.title;
     el.pageUrl.textContent = state.context.url;

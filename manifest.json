@@ -4,11 +4,11 @@
   "version": "1.2.2",
   "description": "Save webpages to Zo, chat in popup or side panel, and continue per-page conversations.",
   "permissions": [
-    "activeTab",
-    "storage",
     "scripting",
-    "tabs",
+    "activeTab",
     "sidePanel",
+    "tabs",
+    "storage",
     "contextMenus"
   ],
   "host_permissions": [
