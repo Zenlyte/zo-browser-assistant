@@ -1,10 +1,20 @@
 {
   "manifest_version": 3,
   "name": "Zo Browser Assistant",
-  "version": "1.2.1",
+  "version": "1.2.2",
   "description": "Save webpages to Zo, chat in popup or side panel, and continue per-page conversations.",
-  "permissions": ["activeTab", "storage", "scripting", "tabs", "sidePanel", "contextMenus"],
-  "host_permissions": ["https://api.zo.computer/*", "https://*.zo.computer/*"],
+  "permissions": [
+    "activeTab",
+    "storage",
+    "scripting",
+    "tabs",
+    "sidePanel",
+    "contextMenus"
+  ],
+  "host_permissions": [
+    "https://api.zo.computer/*",
+    "https://*.zo.computer/*"
+  ],
   "action": {
     "default_popup": "popup.html",
     "default_icon": {
@@ -28,5 +38,19 @@
   },
   "content_security_policy": {
     "extension_pages": "script-src 'self'; object-src 'self'"
+  },
+  "commands": {
+    "open-sidebar": {
+      "suggested_key": {
+        "default": "Ctrl+Shift+Z"
+      },
+      "description": "Open Zo Sidebar"
+    },
+    "quick-save": {
+      "suggested_key": {
+        "default": "Ctrl+Shift+S"
+      },
+      "description": "Quick Save to Zo"
+    }
   }
 }

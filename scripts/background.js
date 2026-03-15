@@ -215,3 +215,78 @@ Reply strictly with 'SAVED'.`;
 
   return false;
 });
+
+// Keyboard shortcut handlers
+chrome.commands.onCommand.addListener(async (command, tab) => {
+  if (command === "open-sidebar") {
+    try {
+      const windowId = tab?.windowId || (await chrome.windows.getLastFocused()).id;
+      if (windowId) await chrome.sidePanel.open({ windowId });
+    } catch (e) {
+      console.warn("Failed to open sidebar:", e);
+    }
+    return;
+  }
+
+  if (command === "quick-save") {
+    // Quick save: save current tab's page to Zo
+    try {
+      const [activeTab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
+      if (!activeTab?.url) return;
+
+      // Extract page content via scripting
+      const results = await chrome.scripting.executeScript({
+        target: { tabId: activeTab.id },
+        func: () => ({
+          title: document.title,
+          url: window.location.href,
+          content: document.body.innerText.slice(0, 15000)
+        })
+      });
+      const pageData = results[0]?.result;
+      if (!pageData) return;
+
+      // Get API key from storage
+      const { zoApiKey: apiKey, zoModel: model } = await chrome.storage.sync.get(['zoApiKey', 'zoModel']);
+      if (!apiKey) {
+        chrome.notifications?.create({
+          type: 'basic',
+          iconUrl: 'icons/icon48.png',
+          title: 'Zo Extension',
+          message: 'Please configure your Zo API key in extension settings'
+        });
+        return;
+      }
+
+      // Save locally first for instant feedback
+      await savePageArtifact({
+        url: pageData.url,
+        title: pageData.title,
+        model: model || 'openrouter:z-ai/glm-5',
+        zoSaved: false,
+      });
+
+      // Show notification
+      chrome.notifications?.create({
+        type: 'basic',
+        iconUrl: 'icons/icon48.png',
+        title: 'Zo Extension',
+        message: `Saving "${pageData.title?.slice(0, 40) || 'Page'}" to Zo...`
+      });
+
+      // Trigger background save
+      chrome.runtime.sendMessage({
+        type: "BACKGROUND_SAVE",
+        url: pageData.url,
+        title: pageData.title,
+        content: pageData.content,
+        apiKey,
+        model: model || 'openrouter:z-ai/glm-5'
+      });
+
+    } catch (e) {
+      console.warn("Quick save failed:", e);
+    }
+    return;
+  }
+});

@@ -5,6 +5,8 @@ import { groupModels, chooseInitialModel } from "./core/model-catalog.js";
 import { getThread, saveThread, clearThread, listThreadMetas, normalizeUrlToThreadId } from "./core/chat-store.js";
 import { sortHistory } from "./core/history-index.js";
 import { getLocalArtifacts, getZoWorkspaceFiles, getZoDirectoryListing } from "./core/files-provider.js";
+import { getCachedFileTree, setCachedFileTree, clearFileTreeCache } from "./core/file-tree-cache.js";
+import { getCachedFileTree, setCachedFileTree, clearFileTreeCache } from "./core/file-tree-cache.js";
 import { savePageArtifact, deleteSavedPage, formatArtifactPath } from "./core/saved-pages.js";
 import { buildOpenInZoUrl } from "./core/open-in-zo.js";
 
@@ -409,7 +411,18 @@ function renderLocalFiles(items) {
   });
 }
 
-async function loadZoDirectory(container, dirPath) {
+async function loadZoDirectory(container, dirPath, forceRefresh = false) {
+  const cacheKey = dirPath || "root";
+  
+  // Check cache first (unless forcing refresh)
+  if (!forceRefresh) {
+    const cached = await getCachedFileTree(cacheKey);
+    if (cached) {
+      renderTreeEntries(container, cached, dirPath);
+      return;
+    }
+  }
+
   const loadingRow = document.createElement("div");
   loadingRow.className = "tree-loading";
   loadingRow.textContent = "Loading...";
@@ -419,6 +432,9 @@ async function loadZoDirectory(container, dirPath) {
     const entries = await getZoDirectoryListing({ apiKey: state.apiKey, dirPath });
     loadingRow.remove();
 
+    // Cache the results
+    await setCachedFileTree(cacheKey, entries);
+
     if (!entries.length) {
       const empty = document.createElement("div");
       empty.className = "tree-empty";
@@ -427,57 +443,67 @@ async function loadZoDirectory(container, dirPath) {
       return;
     }
 
-    const dirs = entries.filter((e) => e.type === "directory").sort((a, b) => a.name.localeCompare(b.name));
-    const files = entries.filter((e) => e.type !== "directory").sort((a, b) => a.name.localeCompare(b.name));
-
-    [...dirs, ...files].forEach((entry) => {
-      const row = document.createElement("div");
-      row.className = "tree-item";
-
-      if (entry.type === "directory") {
-        row.classList.add("tree-folder");
-        row.innerHTML = `<span class="tree-icon">▶</span><span class="tree-name">${entry.name}</span>`;
-        row.title = entry.path;
-
-        let expanded = false;
-        let childContainer = null;
-
-        row.addEventListener("click", async () => {
-          expanded = !expanded;
-          row.querySelector(".tree-icon").textContent = expanded ? "▼" : "▶";
-          row.classList.toggle("expanded", expanded);
-
-          if (expanded) {
-            if (!childContainer) {
-              childContainer = document.createElement("div");
-              childContainer.className = "tree-children";
-              row.after(childContainer);
-              await loadZoDirectory(childContainer, entry.path);
-            }
-            childContainer.classList.remove("hidden");
-          } else if (childContainer) {
-            childContainer.classList.add("hidden");
-          }
-        });
-      } else {
-        row.classList.add("tree-file");
-        row.innerHTML = `<span class="tree-icon">📄</span><span class="tree-name">${entry.name}</span>`;
-        row.title = `Click to reference: ${entry.path}`;
-
-        row.addEventListener("click", () => {
-          insertFileReference(entry.path);
-        });
-      }
-
-      container.appendChild(row);
-    });
+    renderTreeEntries(container, entries, dirPath);
   } catch (e) {
     loadingRow.textContent = `Failed: ${String(e.message || e)}`;
   }
 }
 
-async function refreshFiles() {
+function renderTreeEntries(container, entries, parentPath) {
+  const dirs = entries.filter((e) => e.type === "directory").sort((a, b) => a.name.localeCompare(b.name));
+  const files = entries.filter((e) => e.type !== "directory").sort((a, b) => a.name.localeCompare(b.name));
+
+  [...dirs, ...files].forEach((entry) => {
+    const row = document.createElement("div");
+    row.className = "tree-item";
+
+    if (entry.type === "directory") {
+      row.classList.add("tree-folder");
+      row.innerHTML = `<span class="tree-icon">▶</span><span class="tree-name">${entry.name}</span>`;
+      row.title = entry.path;
+
+      let expanded = false;
+      let childContainer = null;
+
+      row.addEventListener("click", async () => {
+        expanded = !expanded;
+        row.querySelector(".tree-icon").textContent = expanded ? "▼" : "▶";
+        row.classList.toggle("expanded", expanded);
+
+        if (expanded) {
+          if (!childContainer) {
+            childContainer = document.createElement("div");
+            childContainer.className = "tree-children";
+            row.after(childContainer);
+            await loadZoDirectory(childContainer, entry.path);
+          }
+          childContainer.classList.remove("hidden");
+        } else if (childContainer) {
+          childContainer.classList.add("hidden");
+        }
+      });
+    } else {
+      row.classList.add("tree-file");
+      row.innerHTML = `<span class="tree-icon">📄</span><span class="tree-name">${entry.name}</span>`;
+      row.title = `Click to reference: ${entry.path}`;
+
+      row.addEventListener("click", () => {
+        insertFileReference(entry.path);
+      });
+    }
+
+    container.appendChild(row);
+  });
+}
+
+async function refreshFiles(forceRefresh = false) {
   const query = el.filesQuery.value.trim();
+  
+  // Clear cache if force refreshing
+  if (forceRefresh) {
+    await clearFileTreeCache();
+  }
+  
   el.filesList.innerHTML = `<div class="row">Loading...</div>`;
 
   try {
@@ -486,7 +512,7 @@ async function refreshFiles() {
       renderLocalFiles(items);
     } else {
       el.filesList.innerHTML = "";
-      await loadZoDirectory(el.filesList, "/home/workspace");
+      await loadZoDirectory(el.filesList, "/home/workspace", forceRefresh);
     }
   } catch (e) {
     el.filesList.innerHTML = `<div class="row">Failed to load files: ${String(e.message || e)}</div>`;
@@ -556,7 +582,7 @@ async function init() {
     await refreshHistory();
   });
 
-  el.filesRefresh.addEventListener("click", refreshFiles);
+  el.filesRefresh.addEventListener("click", () => refreshFiles(true));
   el.filesQuery.addEventListener("keydown", (e) => {
     if (e.key === "Enter") refreshFiles();
   });
