@@ -231,6 +231,8 @@ chrome.commands.onCommand.addListener(async (command, tab) => {
   if (command === "quick-save") {
     // Quick save: save current tab's page to Zo
     try {
+      // Show ⏳ badge while processing
+      await updateSaveBadge("⏳", "#6366f1");
       const [activeTab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
       if (!activeTab?.url) return;
 
@@ -249,6 +251,8 @@ chrome.commands.onCommand.addListener(async (command, tab) => {
       // Get API key from storage
       const { zoApiKey: apiKey, zoModel: model } = await chrome.storage.sync.get(['zoApiKey', 'zoModel']);
       if (!apiKey) {
+        await updateSaveBadge("⚠️", "#f59e0b");
+        setTimeout(() => clearSaveBadge(), 3000);
         if (chrome.notifications) {
           chrome.notifications.create({
             type: 'basic',
@@ -269,6 +273,9 @@ chrome.commands.onCommand.addListener(async (command, tab) => {
         model: model || 'openrouter:z-ai/glm-5',
         zoSaved: false,
       });
+      
+      // Show ✅ badge for local save success
+      await updateSaveBadge("✅", "#22c55e");
 
       // Show notification (fallback to console if notifications not available)
       const notifMsg = `Saving "${pageData.title?.slice(0, 40) || 'Page'}" to Zo...`;
@@ -294,6 +301,8 @@ chrome.commands.onCommand.addListener(async (command, tab) => {
       });
 
     } catch (e) {
+      await updateSaveBadge("❌", "#ef4444");
+      setTimeout(() => clearSaveBadge(), 5000);
       console.warn("Quick save failed:", e);
     }
     return;
@@ -332,3 +341,22 @@ chrome.commands.onCommand.addListener(async (command, tab) => {
     }
   }
 });
+
+// Badge feedback helpers for Quick Save
+async function updateSaveBadge(text, color = "#6366f1") {
+  try {
+    await chrome.action.setBadgeText({ text });
+    await chrome.action.setBadgeBackgroundColor({ color });
+  } catch (e) {
+    console.error("Badge update failed:", e);
+  }
+}
+
+async function clearSaveBadge() {
+  try {
+    await chrome.action.setBadgeText({ text: "" });
+  } catch (e) {
+    console.error("Badge clear failed:", e);
+  }
+}
+
