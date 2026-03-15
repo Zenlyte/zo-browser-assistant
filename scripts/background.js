@@ -1,5 +1,9 @@
 import { savePageArtifact } from "./core/saved-pages.js";
-import { askZo } from "./core/zo-client.js";
+import { askZo, askZoStream } from "./core/zo-client.js";
+import { saveThread, getThread, normalizeUrlToThreadId } from "./core/chat-store.js";
+
+// Keep track of active streams to support popup -> sidebar handoff
+const activeStreams = new Map();
 
 async function ensurePopupFirstBehavior() {
   try {
@@ -111,8 +115,100 @@ Reply strictly with 'SAVED'.`;
     return true;
   }
 
+  if (message?.type === "START_STREAM") {
+    const { url, title, model, apiKey, input, messages } = message;
+    const threadId = normalizeUrlToThreadId(url);
+
+    // If there's already a stream for this thread, ignore or cancel? 
+    // Usually user sends a new question, so we should allow it.
+    if (activeStreams.has(threadId)) {
+      // Logic to cancel existing if needed
+    }
+
+    const streamState = {
+      fullContent: "",
+      isComplete: false,
+      error: null,
+      messages: [...messages] // The messages including the new user question
+    };
+    activeStreams.set(threadId, streamState);
+
+    (async () => {
+      try {
+        await askZoStream({
+          apiKey,
+          model,
+          input,
+          onChunk(fullText) {
+            streamState.fullContent = fullText;
+            chrome.runtime.sendMessage({
+              type: "STREAM_CHUNK",
+              threadId,
+              fullText
+            }).catch(() => {}); // Expected if no UI is open mid-handoff
+          },
+          onDone(fullText) {
+            streamState.fullContent = fullText;
+            streamState.isComplete = true;
+            
+            // Save to chat store
+            const finalMessages = [...streamState.messages, { role: "assistant", content: fullText }];
+            saveThread({ url, title, messages: finalMessages }).then(() => {
+              chrome.runtime.sendMessage({
+                type: "STREAM_DONE",
+                threadId,
+                fullText
+              }).catch(() => {});
+              
+              // Notify that thread was updated for syncing
+              chrome.runtime.sendMessage({ type: "THREAD_UPDATED", threadId }).catch(() => {});
+              
+              // Clean up after a delay to allow UI to "catch" the done state
+              setTimeout(() => activeStreams.delete(threadId), 5000);
+            });
+          },
+          onError(err) {
+            streamState.error = String(err.message || err);
+            chrome.runtime.sendMessage({
+              type: "STREAM_ERROR",
+              threadId,
+              error: streamState.error
+            }).catch(() => {});
+            activeStreams.delete(threadId);
+          }
+        });
+      } catch (e) {
+        chrome.runtime.sendMessage({
+          type: "STREAM_ERROR",
+          threadId,
+          error: String(e.message || e)
+        }).catch(() => {});
+        activeStreams.delete(threadId);
+      }
+    })();
+
+    sendResponse({ ok: true });
+    return true;
+  }
+
+  if (message?.type === "GET_ACTIVE_STREAM") {
+    const threadId = message.threadId;
+    const stream = activeStreams.get(threadId);
+    if (stream) {
+      sendResponse({ 
+        isActive: true, 
+        fullContent: stream.fullContent, 
+        isComplete: stream.isComplete,
+        error: stream.error
+      });
+    } else {
+      sendResponse({ isActive: false });
+    }
+    return true;
+  }
+
   if (message?.type === "THREAD_UPDATED" || message?.type === "ACTIVE_TAB_CHANGED") {
-    chrome.runtime.sendMessage(message);
+    chrome.runtime.sendMessage(message).catch(() => {});
     sendResponse({ ok: true });
     return true;
   }

@@ -102,7 +102,17 @@ export async function askZoStream({ apiKey, model, input, onChunk, onDone, onErr
           const data = JSON.parse(dataStr);
           
           // Handle different response formats
-          if (eventType === "FrontendModelResponse" || eventType === "ModelResponse") {
+          if (eventType === "PartStartEvent") {
+            if (data.part?.content && data.part?.part_kind === "text") {
+              fullContent += data.part.content;
+              onChunk(fullContent, data.part.content);
+            }
+          } else if (eventType === "PartDeltaEvent") {
+            if (data.delta?.content_delta && data.delta?.part_delta_kind === "text") {
+              fullContent += data.delta.content_delta;
+              onChunk(fullContent, data.delta.content_delta);
+            }
+          } else if (eventType === "FrontendModelResponse" || eventType === "ModelResponse") {
             if (data.content) {
               fullContent += data.content;
               onChunk(fullContent, data.content);
@@ -115,8 +125,11 @@ export async function askZoStream({ apiKey, model, input, onChunk, onDone, onErr
             if (onError) onError(new Error(data.message || data.error || "Stream error"));
             isComplete = true;
           } else if (eventType === "End" || eventType === "FrontendModelResponseEnd") {
+            if (data.data?.output) {
+              fullContent = data.data.output;
+            }
             isComplete = true;
-            if (onDone && !isComplete) onDone(fullContent);
+            if (onDone) onDone(fullContent);
           }
         } catch (e) {
           // Failed to parse JSON - might be plain text output
@@ -146,6 +159,7 @@ export async function listAvailableModels({ apiKey }) {
       Authorization: `Bearer ${apiKey}`,
       Accept: "application/json",
     },
+    cache: "no-store",
   });
 
   if (res.status === 401 || res.status === 403) {

@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Zo Browser Assistant",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "description": "Save webpages to Zo, chat in popup or side panel, and continue per-page conversations.",
   "permissions": ["activeTab", "storage", "scripting", "tabs", "sidePanel", "contextMenus"],
   "host_permissions": ["https://api.zo.computer/*", "https://*.zo.computer/*"],

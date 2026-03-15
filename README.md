@@ -18,9 +18,10 @@ Chrome extension for saving webpages to Zo and chatting with page context in eit
 
 ## Key Features
 
-- Save current webpage to Zo with instant local save and background sync.
-- Chat with page context using Zo API with streaming responses.
-- Markdown-rendered answers with syntax highlighting.
+- Save current webpage to Zo.
+- Chat with page context using Zo API.
+- **Persistent Streaming**: Handoff active chat streams between popup and sidebar seamlessly.
+- Markdown-rendered answers.
 - Per-page thread history (URL-normalized, tracking params stripped).
 - Side panel history browser with delete support.
 - Files pane with:

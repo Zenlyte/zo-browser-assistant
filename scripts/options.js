@@ -88,6 +88,7 @@ document.addEventListener('DOMContentLoaded', async () => {
           Authorization: `Bearer ${apiKey}`,
           Accept: 'application/json',
         },
+        cache: 'no-store',
       });
 
       if (response.status === 401 || response.status === 403) {

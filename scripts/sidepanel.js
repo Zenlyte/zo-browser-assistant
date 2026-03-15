@@ -21,7 +21,10 @@ let state = {
   filesTab: "local",
   modelsReady: false,
   inFlightRequestId: 0,
+  isStreaming: false,
 };
+
+let streamingBubble = null;
 
 const savesInFlight = new Set();
 
@@ -98,12 +101,14 @@ function appendStreamingBubble() {
   d.innerHTML = `<span class="streaming-cursor"></span>`;
   el.chatMessages.appendChild(d);
   el.chatMessages.scrollTop = el.chatMessages.scrollHeight;
+  streamingBubble = d;
   return d;
 }
 
 function updateStreamingBubble(bubble, content) {
+  if (!bubble) return;
   if (typeof marked !== "undefined") {
-    bubble.innerHTML = marked.parse(content) + `<span class="streaming-cursor"></span>`;
+    bubble.innerHTML = marked.parse(content) + `<span class=\"streaming-cursor\"></span>`;
     bubble.querySelectorAll("pre code").forEach((b) => {
       if (typeof hljs !== "undefined") hljs.highlightElement(b);
     });
@@ -114,6 +119,7 @@ function updateStreamingBubble(bubble, content) {
 }
 
 function finalizeStreamingBubble(bubble, content) {
+  if (!bubble) return;
   bubble.classList.remove("streaming");
   if (typeof marked !== "undefined") {
     bubble.innerHTML = marked.parse(content);
@@ -124,6 +130,7 @@ function finalizeStreamingBubble(bubble, content) {
     bubble.textContent = content;
   }
   el.chatMessages.scrollTop = el.chatMessages.scrollHeight;
+  streamingBubble = null;
 }
 
 function populateModelSelect(models) {
@@ -190,6 +197,23 @@ async function loadContextAndThread() {
 
   const thread = await getThread(state.context.url);
   state.messages = thread?.messages || [];
+  
+  // Check for active stream handoff
+  const threadId = normalizeUrlToThreadId(state.context.url);
+  chrome.runtime.sendMessage({ type: "GET_ACTIVE_STREAM", threadId }, (resp) => {
+    if (resp?.isActive) {
+      state.isStreaming = true;
+      setActionAvailability(false);
+      const bubble = appendStreamingBubble();
+      updateStreamingBubble(bubble, resp.fullContent);
+      if (resp.isComplete) {
+        finalizeStreamingBubble(bubble, resp.fullContent);
+        state.isStreaming = false;
+        setActionAvailability(true);
+      }
+    }
+  });
+
   renderChat();
   setActionAvailability(state.modelsReady);
 }
@@ -229,13 +253,8 @@ async function sendChat() {
     messages: workingMessages,
   });
 
-  const isCurrentContext = () =>
-    state.context?.url === lockedContext.url && requestId === state.inFlightRequestId;
-
-  let bubble = null;
-  if (isCurrentContext()) {
-    bubble = appendStreamingBubble();
-  }
+  state.isStreaming = true;
+  appendStreamingBubble();
   setActionAvailability(false);
 
   const contextText = lockedContext.content.slice(0, 12000);
@@ -243,42 +262,20 @@ async function sendChat() {
   const prompt = `You are helping with this webpage.\nTitle: ${lockedContext.title}\nURL: ${lockedContext.url}\n\nPage:\n${contextText}\n\nConversation:\n${recent}\n\nLatest question: ${q}\n\nRespond in markdown.`;
 
   try {
-    const finalContent = await askZoStream({
-      apiKey: state.apiKey,
-      model: lockedModel,
-      input: prompt,
-      onChunk(fullText) {
-        if (bubble && isCurrentContext()) {
-          updateStreamingBubble(bubble, fullText);
-        }
-      },
-      onDone(fullText) {
-        if (bubble && isCurrentContext()) {
-          finalizeStreamingBubble(bubble, fullText);
-        }
-      },
-      onError(err) {
-        setStatus(String(err.message || err));
-      },
-    });
-
-    const output = finalContent || "No response";
-    const finalMessages = [...workingMessages, { role: "assistant", content: output }];
-
-    await persistMessagesForContext({
+    chrome.runtime.sendMessage({
+      type: "START_STREAM",
       url: lockedContext.url,
       title: lockedContext.title,
-      messages: finalMessages,
+      model: lockedModel,
+      apiKey: state.apiKey,
+      input: prompt,
+      messages: workingMessages
     });
-
-    if (isCurrentContext()) {
-      if (bubble) finalizeStreamingBubble(bubble, output);
-      state.messages = finalMessages;
-    }
   } catch (e) {
-    if (bubble) bubble.remove();
+    if (streamingBubble) streamingBubble.remove();
+    streamingBubble = null;
     setStatus(String(e.message || e));
-  } finally {
+    state.isStreaming = false;
     setActionAvailability(true);
   }
 }
@@ -565,9 +562,38 @@ async function init() {
   });
 
   chrome.runtime.onMessage.addListener((msg) => {
+    const currentThreadId = state.context?.url ? normalizeUrlToThreadId(state.context.url) : null;
+
+    if (msg?.type === "STREAM_CHUNK" && msg.threadId === currentThreadId) {
+      if (!streamingBubble) appendStreamingBubble();
+      state.isStreaming = true;
+      setActionAvailability(false);
+      updateStreamingBubble(streamingBubble, msg.fullText);
+    }
+
+    if (msg?.type === "STREAM_DONE" && msg.threadId === currentThreadId) {
+      finalizeStreamingBubble(streamingBubble, msg.fullText);
+      state.isStreaming = false;
+      setActionAvailability(true);
+    }
+
+    if (msg?.type === "STREAM_ERROR" && msg.threadId === currentThreadId) {
+      if (streamingBubble) streamingBubble.remove();
+      streamingBubble = null;
+      state.isStreaming = false;
+      setActionAvailability(true);
+      setStatus(msg.error);
+    }
+
     if (msg?.type === "THREAD_UPDATED") {
       refreshHistory();
-      if (state.context?.url) loadContextAndThread();
+      if (state.context?.url) {
+        if (msg.threadId === normalizeUrlToThreadId(state.context.url) && state.isStreaming) {
+          // Do not interrupt the active stream to re-render
+          return;
+        }
+        loadContextAndThread();
+      }
     }
   });
 }

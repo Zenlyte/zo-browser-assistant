@@ -17,7 +17,10 @@ let state = {
   context: null,
   messages: [],
   modelsReady: false,
+  isStreaming: false,
 };
+
+let streamingBubble = null;
 
 const savesInFlight = new Set();
 
@@ -91,10 +94,12 @@ function appendStreamingBubble() {
   d.innerHTML = `<span class="streaming-cursor"></span>`;
   el.chatMessages.appendChild(d);
   el.chatMessages.scrollTop = el.chatMessages.scrollHeight;
+  streamingBubble = d;
   return d;
 }
 
 function updateStreamingBubble(bubble, content) {
+  if (!bubble) return;
   if (typeof marked !== "undefined") {
     bubble.innerHTML = marked.parse(content) + `<span class="streaming-cursor"></span>`;
     bubble.querySelectorAll("pre code").forEach((b) => {
@@ -107,6 +112,7 @@ function updateStreamingBubble(bubble, content) {
 }
 
 function finalizeStreamingBubble(bubble, content) {
+  if (!bubble) return;
   bubble.classList.remove("streaming");
   if (typeof marked !== "undefined") {
     bubble.innerHTML = marked.parse(content);
@@ -117,6 +123,7 @@ function finalizeStreamingBubble(bubble, content) {
     bubble.textContent = content;
   }
   el.chatMessages.scrollTop = el.chatMessages.scrollHeight;
+  streamingBubble = null;
 }
 
 function populateModelSelect(models) {
@@ -189,6 +196,22 @@ async function init() {
     el.pageUrl.textContent = state.context.url;
     const thread = await getThread(state.context.url);
     state.messages = thread?.messages || [];
+    
+    // Check for active stream handoff
+    const threadId = normalizeUrlToThreadId(state.context.url);
+    chrome.runtime.sendMessage({ type: "GET_ACTIVE_STREAM", threadId }, (resp) => {
+      if (resp?.isActive) {
+        state.isStreaming = true;
+        setActionAvailability(false);
+        const bubble = appendStreamingBubble();
+        updateStreamingBubble(bubble, resp.fullContent);
+        if (resp.isComplete) {
+          finalizeStreamingBubble(bubble, resp.fullContent);
+          state.isStreaming = false;
+          setActionAvailability(true);
+        }
+      }
+    });
   }
   renderMessages();
   bindEvents();
@@ -235,7 +258,35 @@ function bindEvents() {
   });
 
   chrome.runtime.onMessage.addListener(async (msg) => {
+    const currentThreadId = state.context?.url ? normalizeUrlToThreadId(state.context.url) : null;
+
+    if (msg?.type === "STREAM_CHUNK" && msg.threadId === currentThreadId) {
+      if (!streamingBubble) appendStreamingBubble();
+      state.isStreaming = true;
+      setActionAvailability(false);
+      updateStreamingBubble(streamingBubble, msg.fullText);
+    }
+
+    if (msg?.type === "STREAM_DONE" && msg.threadId === currentThreadId) {
+      finalizeStreamingBubble(streamingBubble, msg.fullText);
+      state.isStreaming = false;
+      setActionAvailability(true);
+      // Actual message list will be updated by THREAD_UPDATED event which follows
+    }
+
+    if (msg?.type === "STREAM_ERROR" && msg.threadId === currentThreadId) {
+      if (streamingBubble) streamingBubble.remove();
+      streamingBubble = null;
+      state.isStreaming = false;
+      setActionAvailability(true);
+      showStatus(msg.error, "error");
+    }
+
     if (msg?.type === "THREAD_UPDATED" && state.context?.url) {
+      if (msg.threadId === normalizeUrlToThreadId(state.context.url) && state.isStreaming) {
+        // Do not interrupt the active stream to re-render
+        return;
+      }
       const thread = await getThread(state.context.url);
       state.messages = thread?.messages || [];
       renderMessages();
@@ -299,40 +350,35 @@ async function sendChat() {
   if (!state.apiKey || !state.context || !state.selectedModel) return showStatus("Missing API key, page context, or model", "error");
 
   el.chatInput.value = "";
-  state.messages.push({ role: "user", content: q });
+  const workingMessages = [...state.messages, { role: "user", content: q }];
+  state.messages = workingMessages;
   renderMessages();
-  await persist();
+  
+  // Persist the user question immediately
+  await saveThread({ url: state.context.url, title: state.context.title, messages: workingMessages });
 
-  const bubble = appendStreamingBubble();
+  state.isStreaming = true;
+  appendStreamingBubble();
   setActionAvailability(false);
 
   try {
-    const convo = state.messages.slice(-10).map((m) => `${m.role}: ${m.content}`).join("\n\n");
+    const convo = workingMessages.slice(-10).map((m) => `${m.role}: ${m.content}`).join("\n\n");
     const input = `Help answer questions about this webpage.\nTitle: ${state.context.title}\nURL: ${state.context.url}\n\nContent:\n${(state.context.content || "").slice(0, 12000)}\n\nConversation:\n${convo}\n\nLatest user question: ${q}\nRespond in markdown.`;
 
-    const finalContent = await askZoStream({
-      apiKey: state.apiKey,
+    chrome.runtime.sendMessage({
+      type: "START_STREAM",
+      url: state.context.url,
+      title: state.context.title,
       model: state.selectedModel,
+      apiKey: state.apiKey,
       input,
-      onChunk(fullText) {
-        updateStreamingBubble(bubble, fullText);
-      },
-      onDone(fullText) {
-        finalizeStreamingBubble(bubble, fullText);
-      },
-      onError(err) {
-        showStatus(String(err.message || err), "error");
-      },
+      messages: workingMessages
     });
-
-    const output = finalContent || "No response";
-    finalizeStreamingBubble(bubble, output);
-    state.messages.push({ role: "assistant", content: output });
-    await persist();
   } catch (e) {
-    bubble.remove();
+    if (streamingBubble) streamingBubble.remove();
+    streamingBubble = null;
     showStatus(String(e.message || e), "error");
-  } finally {
+    state.isStreaming = false;
     setActionAvailability(true);
   }
 }
