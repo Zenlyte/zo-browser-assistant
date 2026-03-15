@@ -6,7 +6,6 @@ import { getThread, saveThread, clearThread, listThreadMetas, normalizeUrlToThre
 import { sortHistory } from "./core/history-index.js";
 import { getLocalArtifacts, getZoWorkspaceFiles, getZoDirectoryListing } from "./core/files-provider.js";
 import { getCachedFileTree, setCachedFileTree, clearFileTreeCache } from "./core/file-tree-cache.js";
-import { getCachedFileTree, setCachedFileTree, clearFileTreeCache } from "./core/file-tree-cache.js";
 import { savePageArtifact, deleteSavedPage, formatArtifactPath } from "./core/saved-pages.js";
 import { buildOpenInZoUrl } from "./core/open-in-zo.js";
 
