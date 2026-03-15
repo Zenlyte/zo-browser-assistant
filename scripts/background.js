@@ -252,7 +252,12 @@ chrome.commands.onCommand.addListener(async (command, tab) => {
       const { zoApiKey: apiKey, zoModel: model } = await chrome.storage.sync.get(['zoApiKey', 'zoModel']);
       if (!apiKey) {
         await updateSaveBadge("⚠️", "#f59e0b");
-        setTimeout(() => clearSaveBadge(), 3000);
+        chrome.alarms.create("clearBadge3s", { delayInMinutes: 3/60 });
+      chrome.alarms.onAlarm.addListener((alarm) => {
+        if (alarm.name === "clearBadge3s") {
+          clearSaveBadge();
+        }
+      });
         if (chrome.notifications) {
           chrome.notifications.create({
             type: 'basic',
@@ -302,7 +307,12 @@ chrome.commands.onCommand.addListener(async (command, tab) => {
 
     } catch (e) {
       await updateSaveBadge("❌", "#ef4444");
-      setTimeout(() => clearSaveBadge(), 5000);
+      chrome.alarms.create("clearBadge", { delayInMinutes: 5/60 });
+      chrome.alarms.onAlarm.addListener((alarm) => {
+        if (alarm.name === "clearBadge") {
+          clearSaveBadge();
+        }
+      });
       console.warn("Quick save failed:", e);
     }
     return;
