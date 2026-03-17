@@ -348,6 +348,9 @@ async function savePage() {
     model: state.selectedModel,
     zoSaved: false,
   });
+  
+  // Notify sidebar to refresh local artifacts
+  chrome.runtime.sendMessage({ type: "SAVED_PAGE_UPDATED", url: state.context.url });
 
   chrome.runtime.sendMessage({
     type: "BACKGROUND_SAVE",

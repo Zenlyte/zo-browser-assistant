@@ -619,6 +619,10 @@ async function init() {
         }
         loadContextAndThread();
       }
+    if (msg?.type === "SAVED_PAGE_UPDATED") {
+      // Refresh local artifacts when a page is saved
+      refreshFiles();
+    }
     }
   });
 }
