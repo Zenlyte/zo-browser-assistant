@@ -77,14 +77,32 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true;
   }
 
-  if (message?.type === "BACKGROUND_SAVE") {
+    if (message?.type === "BACKGROUND_SAVE") {
     const { url, title, content, apiKey, model } = message;
     
     (async () => {
       try {
-        // Use a much faster prompt that directly executes the save_url script without LLM rewriting
-        const input = `Run this exact command to save the URL: nohup bun /home/workspace/Automations/Scripts/save_url.ts '${url}' >/dev/null 2>&1 &
+        // Get settings to check for custom save script
+        const settings = await chrome.storage.sync.get(["zoApiKey", "zoModel", "zoHandle", "customSaveScript"]);
+        const customScript = settings.customSaveScript?.trim();
+        
+        let input;
+        if (customScript) {
+          // Use custom script if configured
+          input = `Run this exact command to save the URL: nohup bun ${customScript} '${url}' >/dev/null 2>&1 &
 Reply strictly with 'SAVED'.`;
+        } else {
+          // Default: use generic save prompt (no script execution)
+          input = `Save this webpage to my Zo workspace memory:
+Title: ${title}
+URL: ${url}
+
+Content preview:
+${content?.substring(0, 3000) || 'No content'}
+
+Store this for future reference with tags: bookmark, ${new URL(url).hostname}
+Reply with 'SAVED'.`;
+        }
 
         const data = await askZo({ apiKey, model, input });
         
@@ -93,9 +111,7 @@ Reply strictly with 'SAVED'.`;
           title,
           model,
           zoSaved: true,
-        });
-
-        chrome.runtime.sendMessage({ 
+        });chrome.runtime.sendMessage({ 
           type: "SAVE_COMPLETED", 
           url, 
           alreadySaved: data?.output?.includes("ALREADY_SAVED") 
