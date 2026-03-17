@@ -205,12 +205,6 @@ async function init() {
 
   state.context = await getActiveTabContext();
   
-  // If we had a pending save and now have context, trigger save
-  if (state.saveOnLoad && state.context && state.apiKey) {
-    state.saveOnLoad = false;
-    // Small delay to let UI render
-    setTimeout(() => savePage(), 300);
-  }
   if (state.context) {
     el.pageTitle.textContent = state.context.title;
     el.pageUrl.textContent = state.context.url;
@@ -236,6 +230,12 @@ async function init() {
   renderMessages();
   bindEvents();
   await loadModelsForSession();
+
+  // Trigger pending save AFTER models are loaded
+  if (state.saveOnLoad && state.context && state.apiKey && state.modelsReady) {
+    state.saveOnLoad = false;
+    savePage();
+  }
 }
 
 function bindEvents() {
