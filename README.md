@@ -36,8 +36,12 @@ Chrome extension for saving webpages to Zo and chatting with page context in eit
 
 1. Open `chrome://extensions`.
 2. Enable Developer Mode.
-3. Load unpacked extension from `Fabric/Coding Projects/zo-chrome-extension`.
-4. Open Options and set Zo API key, default model, and Zo handle.
+3. Load unpacked extension from this folder.
+4. Open **Extension Options** and configure:
+   - **Zo API Key** (required)
+   - **Default Model** (required)
+   - **Zo Handle** (required for "Open in Zo" links)
+   - **Custom Save Script** (optional - for personal integrations)
 
 ## Notes
 
@@ -52,20 +56,34 @@ Chrome extension for saving webpages to Zo and chatting with page context in eit
 - **Fixed in v1.2:** Improved streaming parser reliability for more consistent token delivery.
 - Fixed edge case where "No response" appeared despite successful API calls.
 
-## Customizing Save Behavior
+## Save Behavior
 
-When you click **Save to Zo**, the extension sends a generic "save this webpage" prompt to your Zo server. By default, Zo saves a markdown summary to `/Bookmarks` in your workspace.
+### Default (Public Version)
 
-You can fully customize what happens next:
+When you click **Save to Zo**, the extension:
+1. Saves the page content locally as a "local artifact" (fast, immediate feedback)
+2. Sends a generic "save this webpage" prompt to your Zo server
+3. Zo creates a markdown summary in your `/Bookmarks` folder
 
-**1. Faster saves with TokenCut**
+### Personal Setup (Custom Script)
+
+**For your own custom integrations** (e.g., saving to Raindrop.io, Notion, Mem, etc.):
+
+1. Create a custom save script (e.g., `/home/workspace/Automations/Scripts/save_url.ts`)
+2. Open Extension Options → **Custom Save Script (Optional)**
+3. Enter your script path: `/home/workspace/Automations/Scripts/save_url.ts`
+4. Now when you click **Save to Zo**, your custom script runs automatically
+
+**Benefits:**
+- Single codebase works for everyone
+- Your personal setup is just configuration, not a fork
+- Easy to share the extension with others
+- Bug fixes apply to everyone automatically
+
+**Example custom script:** See `Automations/Scripts/save_url.ts` for a reference implementation that saves to Fabric, Mem.ai, and Raindrop.io.
+
+## Performance Tips
+
+**Faster saves with TokenCut**
 
 Install the [`@tokencut` skill](https://github.com/zocomputer/skills) from the Zo Skills registry. It compresses extracted page text by ~40–60% before it hits the LLM — reducing token usage on every save.
-
-**2. Custom integrations via Zo Rules**
-
-Add a Zo Rule that intercepts save prompts and runs your own script. Example rule condition:
-
-> *When asked to save a URL, run `/home/workspace/Automations/Scripts/save_url.ts`*
-
-Your script can then sync the bookmark to any platform connected to your Zo (e.g. Raindrop.io, Notion, a self-hosted database). The extension itself is platform-agnostic — the integration logic lives entirely on your Zo server, so each user's setup is their own.

@@ -1,6 +1,7 @@
 document.addEventListener('DOMContentLoaded', async () => {
   const apiKeyInput = document.getElementById('api-key');
-  const modelSelect = document.getElementById('model-select');
+  const modelSelect = document.getElementById('model-select')
+  const customSaveScript = document.getElementById('custom-save-script');
   const saveBtn = document.getElementById('save-btn');
   const testBtn = document.getElementById('test-btn');
   const reloadModelsBtn = document.getElementById('reload-models-btn');
@@ -123,7 +124,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
   }
 
-  const result = await chrome.storage.sync.get(['zoApiKey', 'zoModel']);
+  const result = await chrome.storage.sync.get(['zoApiKey', 'zoModel', 'customSaveScript']);
   if (result.zoApiKey) apiKeyInput.value = result.zoApiKey;
 
   await fetchAndPopulateModels(result.zoApiKey || '', result.zoModel || '');

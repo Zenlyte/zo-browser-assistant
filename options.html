@@ -244,6 +244,15 @@
         <label for="model-select">Default Model</label>
         <select id="model-select"></select>
         <p class="help-text">Loads all available models for this API key (native + BYOK). This default is used when popup/sidepanel opens.</p>
+      <div class="form-group" style="margin-top:12px;">
+        <label for="custom-save-script">Custom Save Script (Optional)</label>
+        <input type="text" id="custom-save-script" placeholder="/home/workspace/Automations/Scripts/save_url.ts">
+        <p class="help-text">
+          Personal only: Path to a custom script that runs when saving pages.
+          Leave empty for default behavior. Example: <code>/home/workspace/Automations/Scripts/save_url.ts</code>
+        </p>
+      </div>
+
         <div class="actions" style="margin-top:8px;">
           <button id="reload-models-btn" class="btn">Reload Models</button>
         </div>
