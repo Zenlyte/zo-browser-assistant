@@ -66,6 +66,6 @@ Install the [`@tokencut` skill](https://github.com/zocomputer/skills) from the Z
 
 Add a Zo Rule that intercepts save prompts and runs your own script. Example rule condition:
 
-> *When asked to save a URL, run `/home/workspace/Scripts/save_url.ts`*
+> *When asked to save a URL, run `/home/workspace/Automations/Scripts/save_url.ts`*
 
 Your script can then sync the bookmark to any platform connected to your Zo (e.g. Raindrop.io, Notion, a self-hosted database). The extension itself is platform-agnostic — the integration logic lives entirely on your Zo server, so each user's setup is their own.
