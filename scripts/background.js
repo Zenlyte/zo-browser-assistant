@@ -83,7 +83,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     (async () => {
       try {
         // Use a much faster prompt that directly executes the save_url script without LLM rewriting
-        const input = `Run this exact command to save the URL: nohup bun /home/workspace/Scripts/save_url.ts '${url}' >/dev/null 2>&1 &
+        const input = `Run this exact command to save the URL: nohup bun /home/workspace/Automations/Scripts/save_url.ts '${url}' >/dev/null 2>&1 &
 Reply strictly with 'SAVED'.`;
 
         const data = await askZo({ apiKey, model, input });
