@@ -619,8 +619,8 @@ async function init() {
         }
         loadContextAndThread();
       }
-    if (msg?.type === "SAVED_PAGE_UPDATED") {
-      // Refresh local artifacts when a page is saved
+    if (msg?.type === "SAVED_PAGE_UPDATED" || msg?.type === "SAVE_COMPLETED") {
+      // Refresh local artifacts when a page is saved (from popup or keyboard shortcut)
       refreshFiles();
     }
     }
